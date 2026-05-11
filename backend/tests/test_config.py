@@ -1,5 +1,3 @@
-import os
-
 from agente10.core.config import Settings
 
 
