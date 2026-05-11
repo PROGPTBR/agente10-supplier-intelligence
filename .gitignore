@@ -19,10 +19,9 @@ build/
 *.tsbuildinfo
 
 # Env
-.env
-.env.local
-.env.*.local
+.env*
 !.env.example
+!.env.*.example
 
 # IDE
 .idea/
