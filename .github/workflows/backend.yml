@@ -1,0 +1,74 @@
+name: backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379/0
+      ENV: local
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.11"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install deps
+        run: uv sync --frozen
+
+      - name: Ruff
+        run: uv run ruff check src tests
+
+      - name: Black
+        run: uv run black --check src tests
+
+      - name: Ensure pgvector extension in CI database
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=test psql -h localhost -U postgres -d test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          PGPASSWORD=test psql -h localhost -U postgres -d test -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+
+      - name: Alembic upgrade
+        run: uv run alembic upgrade head
+
+      - name: Pytest
+        run: uv run pytest -q
