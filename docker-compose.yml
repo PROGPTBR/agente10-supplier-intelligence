@@ -45,5 +45,17 @@ services:
     ports:
       - "8000:8000"
 
+  frontend:
+    build: ./frontend
+    command: pnpm dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    environment:
+      WATCHPACK_POLLING: "true"
+
 volumes:
   pg_data:
