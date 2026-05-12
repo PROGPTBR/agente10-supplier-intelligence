@@ -1,5 +1,25 @@
+"""Shared pytest fixtures.
+
+- ``client`` (unit): ASGI client with mocked /health pingers.
+- ``db_engine``, ``db_session``, ``two_tenants`` (integration): real Postgres
+  via the docker-compose service. Skipped unless ``-m integration`` is used.
+"""
+
+import os
+import uuid
+from collections.abc import AsyncIterator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+# --- Unit-test fixture (no DB) -----------------------------------------------
 
 
 @pytest.fixture
@@ -9,10 +29,8 @@ async def client(monkeypatch):
     monkeypatch.setenv("REDIS_URL", "redis://x:6379/0")
     monkeypatch.setenv("ENV", "local")
 
-    # Import after env is set so Settings() reads our overrides
     from agente10 import main as main_module
 
-    # Patch the engine/redis pingers so the test doesn't need real services
     async def _ok_db_ping() -> str:
         return "ok"
 
@@ -25,3 +43,77 @@ async def client(monkeypatch):
     transport = ASGITransport(app=main_module.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+# --- Integration fixtures (real Postgres) ------------------------------------
+
+
+def _integration_db_url() -> str:
+    """Resolve the URL for the integration Postgres.
+
+    In CI, services run on localhost. Locally, ``docker compose up postgres``
+    exposes 5432 on host. Either way, env override via ``INTEGRATION_DATABASE_URL``
+    wins.
+    """
+    return os.getenv(
+        "INTEGRATION_DATABASE_URL",
+        "postgresql+asyncpg://agente10:agente10_dev@localhost:5432/agente10",
+    )
+
+
+@pytest.fixture(scope="session")
+async def db_engine() -> AsyncIterator[AsyncEngine]:
+    """Session-scoped engine pointed at the real test Postgres."""
+    engine = create_async_engine(_integration_db_url(), pool_pre_ping=True)
+    yield engine
+    await engine.dispose()
+
+
+@pytest.fixture
+async def db_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    """Function-scoped session, rolled back at the end of every test."""
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+        await session.rollback()
+
+
+@pytest.fixture
+async def two_tenants(db_engine: AsyncEngine) -> AsyncIterator[tuple[uuid.UUID, uuid.UUID]]:
+    """Create two tenants for isolation tests; clean up at end.
+
+    Inserts directly via a session that is *outside* the per-test rollback fixture,
+    because RLS tests need the tenant rows to be visible across their own sessions.
+    """
+    tenant_a = uuid.uuid4()
+    tenant_b = uuid.uuid4()
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("INSERT INTO tenants (id, nome) VALUES (:a, 'tenant_a'), (:b, 'tenant_b')"),
+            {"a": str(tenant_a), "b": str(tenant_b)},
+        )
+
+    yield (tenant_a, tenant_b)
+
+    # Cleanup. RLS tables first (FK), then tenants. Bypass RLS by setting current
+    # tenant; we just want everything related to A or B gone.
+    async with factory() as session, session.begin():
+        for tenant in (tenant_a, tenant_b):
+            await session.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"),
+                {"tid": str(tenant)},
+            )
+            for table in (
+                "supplier_shortlists",
+                "concentracao_categorias",
+                "spend_linhas",
+                "spend_clusters",
+                "spend_uploads",
+            ):
+                await session.execute(text(f"DELETE FROM {table}"))
+        await session.execute(
+            text("DELETE FROM tenants WHERE id IN (:a, :b)"),
+            {"a": str(tenant_a), "b": str(tenant_b)},
+        )
