@@ -62,7 +62,16 @@ for ENTRY in dados_cnpj_baixa.py dados_cnpj_para_sqlite.py; do
         exit 1
     fi
     echo "==> Running upstream: $ENTRY"
+    # Temporarily disable pipefail so `yes` getting SIGPIPE'd at end of pipeline
+    # doesn't fail the whole script — we only care about the Python script's RC.
+    set +o pipefail
     yes | "$VENV_BIN/python" "$ENTRY"
+    python_rc=$?
+    set -o pipefail
+    if [ "$python_rc" -ne 0 ]; then
+        echo "ERROR: $ENTRY exited with code $python_rc" >&2
+        exit "$python_rc"
+    fi
 done
 
 # Upstream writes cnpj.db into its own directory. Move it into our data dir.
