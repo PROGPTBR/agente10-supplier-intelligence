@@ -124,6 +124,9 @@ def _extract_rows(xls_path: Path) -> list[dict]:
 def _extract_compreende(notes: str | None) -> str | None:
     """Extract only the bullets under 'Esta subclasse compreende:' / 'compreende também:'
     (stops at 'não compreende' or end). Returns None if the section isn't present.
+
+    Strips header lines that may leak into the captured text when the IBGE notes have
+    nested 'Esta subclasse também compreende:' subsections.
     """
     if not notes:
         return None
@@ -132,8 +135,19 @@ def _extract_compreende(notes: str | None) -> str | None:
         r"(?=esta subclasse não compreende|notas? explicativas?|$)",
         re.IGNORECASE | re.DOTALL,
     )
-    chunks = [m.group(1).strip() for m in pattern.finditer(notes)]
-    return "\n".join(chunks).strip() or None if chunks else None
+    header_line = re.compile(r"\s*esta subclasse[^\n]*", re.IGNORECASE)
+    cleaned: list[str] = []
+    for m in pattern.finditer(notes):
+        captured = m.group(1)
+        # Drop any "Esta subclasse ..." header line that leaked through
+        body = "\n".join(
+            line for line in captured.split("\n") if not header_line.match(line)
+        )
+        cleaned.append(body.strip())
+    if not cleaned:
+        return None
+    out = "\n".join(c for c in cleaned if c).strip()
+    return out or None
 
 
 def main() -> int:
