@@ -38,8 +38,11 @@ else
     VENV_BIN=".venv/bin"
 fi
 
-"$VENV_BIN/pip" install --quiet --upgrade pip
-"$VENV_BIN/pip" install --quiet -r requirements.txt
+# Use `python -m pip` rather than the pip executable directly: on Windows the
+# pip.exe locks itself when invoked, so a `pip install --upgrade pip` fails. The
+# `python -m` form sidesteps the lock and also doesn't require us to upgrade pip
+# ourselves — stock venv pip is fine for rictom's requirements.txt.
+"$VENV_BIN/python" -m pip install --quiet -r requirements.txt
 
 # rictom's entry script. As of v0.7 (mar/2026) the script that runs the full
 # pipeline is `dados_cnpj_baixar_e_processar_v07.py`. The exact name may drift —
