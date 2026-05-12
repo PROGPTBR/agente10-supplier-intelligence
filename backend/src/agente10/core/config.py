@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,11 @@ class Settings(BaseSettings):
 
     voyage_api_key: str | None = None
     voyage_model: str = "voyage-3"
+
+    @field_validator("voyage_api_key", mode="before")
+    @classmethod
+    def _blank_to_none(cls, v: str | None) -> str | None:
+        return v or None
 
 
 def get_settings() -> Settings:
