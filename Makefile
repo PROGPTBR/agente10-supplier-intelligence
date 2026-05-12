@@ -1,4 +1,4 @@
-.PHONY: help up down logs build test test-backend test-backend-integration test-backend-voyage test-frontend test-integration lint lint-backend lint-frontend fmt migrate load-cnae ingest-rf bootstrap-data install-hooks clean
+.PHONY: help up down logs build test test-backend test-backend-integration test-backend-voyage test-frontend test-integration lint lint-backend lint-frontend fmt migrate load-cnae ingest-rf load-empresas bootstrap-rf bootstrap-data install-hooks clean
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,8 @@ help:
 	@echo "  migrate                     apply alembic migrations"
 	@echo "  load-cnae                   populate cnae_taxonomy from bundled JSON"
 	@echo "  ingest-rf                   download + parse RF CNPJ dump → backend/data/cnpj.db (~1-2h, ~30GB)"
+	@echo "  load-empresas               SQLite (data/cnpj.db) → Postgres empresas (~30-60min)"
+	@echo "  bootstrap-rf                migrate + ingest-rf + load-empresas (full setup)"
 	@echo "  bootstrap-data              migrate + load-cnae"
 	@echo "  install-hooks               install pre-commit hooks"
 
@@ -40,6 +42,12 @@ load-cnae:
 
 ingest-rf:
 	bash backend/scripts/run_cnpj_sqlite.sh
+
+load-empresas:
+	docker compose run --rm backend uv run python scripts/load_empresas.py
+
+bootstrap-rf: migrate ingest-rf load-empresas
+	@echo "RF data fully loaded."
 
 bootstrap-data: migrate load-cnae
 
