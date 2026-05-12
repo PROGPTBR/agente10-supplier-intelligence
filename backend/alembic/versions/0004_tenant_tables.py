@@ -33,13 +33,15 @@ def _enable_rls(table: str) -> None:
     op.execute(f"""
         CREATE POLICY tenant_isolation_select ON {table}
             FOR SELECT
-            USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
+            USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
         """)
     op.execute(f"""
         CREATE POLICY tenant_isolation_modify ON {table}
             FOR ALL
-            USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-            WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
+            USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+            WITH CHECK (
+                tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID
+            )
         """)
 
 
