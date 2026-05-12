@@ -36,7 +36,7 @@ test-backend:
 
 test-backend-integration:
 	docker compose up -d postgres
-	docker compose run --rm backend uv run pytest -q -m integration
+	docker compose run --rm -e INTEGRATION_DATABASE_URL=postgresql+asyncpg://agente10_app:agente10_dev@postgres:5432/agente10 backend uv run pytest -q -m integration
 
 test-frontend:
 	cd frontend && pnpm test

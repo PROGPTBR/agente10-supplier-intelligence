@@ -1,6 +1,6 @@
 """Tenant scoping helper for RLS.
 
-Use inside an active transaction. The SET LOCAL is reverted on commit/rollback,
+Use inside an active transaction. The setting is reverted on commit/rollback,
 so the tenant context never leaks across transactions or pool connections.
 """
 
@@ -19,10 +19,11 @@ async def tenant_context(
     """Scope subsequent queries to the given tenant via PostgreSQL RLS.
 
     Must be called inside an active transaction (e.g., ``async with session.begin():``).
-    The ``SET LOCAL`` semantic means the setting is reverted on commit/rollback.
+    Uses ``set_config(name, value, is_local=true)`` which is transaction-scoped —
+    same semantics as ``SET LOCAL`` but supports parameter binding via asyncpg.
     """
     await session.execute(
-        text("SET LOCAL app.current_tenant_id = :tid"),
+        text("SELECT set_config('app.current_tenant_id', :tid, true)"),
         {"tid": str(tenant_id)},
     )
     yield session

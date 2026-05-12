@@ -51,13 +51,13 @@ async def client(monkeypatch):
 def _integration_db_url() -> str:
     """Resolve the URL for the integration Postgres.
 
-    In CI, services run on localhost. Locally, ``docker compose up postgres``
-    exposes 5432 on host. Either way, env override via ``INTEGRATION_DATABASE_URL``
-    wins.
+    Default uses the non-superuser ``agente10_app`` role + ``postgres`` hostname
+    (docker service). Override via ``INTEGRATION_DATABASE_URL`` for other layouts
+    (e.g., CI runners that connect over localhost).
     """
     return os.getenv(
         "INTEGRATION_DATABASE_URL",
-        "postgresql+asyncpg://agente10:agente10_dev@localhost:5432/agente10",
+        "postgresql+asyncpg://agente10_app:agente10_dev@postgres:5432/agente10",
     )
 
 
@@ -102,7 +102,7 @@ async def two_tenants(db_engine: AsyncEngine) -> AsyncIterator[tuple[uuid.UUID, 
     async with factory() as session, session.begin():
         for tenant in (tenant_a, tenant_b):
             await session.execute(
-                text("SET LOCAL app.current_tenant_id = :tid"),
+                text("SELECT set_config('app.current_tenant_id', :tid, true)"),
                 {"tid": str(tenant)},
             )
             for table in (
