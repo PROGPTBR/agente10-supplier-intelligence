@@ -20,13 +20,11 @@ pytestmark = pytest.mark.integration
 async def _seed_upload(session: AsyncSession, tenant_id: uuid.UUID, nome: str) -> uuid.UUID:
     """Insert a spend_upload row under the current tenant context, return its id."""
     row = await session.execute(
-        text(
-            """
+        text("""
             INSERT INTO spend_uploads (tenant_id, nome_arquivo, object_storage_path)
             VALUES (:tid, :nome, :path)
             RETURNING id
-            """
-        ),
+            """),
         {"tid": str(tenant_id), "nome": nome, "path": f"s3://bucket/{nome}"},
     )
     return row.scalar_one()
@@ -88,12 +86,10 @@ async def test_with_check_blocks_cross_tenant_insert(
         async with db_session.begin():
             async with tenant_context(db_session, tenant_a):
                 await db_session.execute(
-                    text(
-                        """
+                    text("""
                         INSERT INTO spend_uploads (tenant_id, nome_arquivo, object_storage_path)
                         VALUES (:tid, :nome, :path)
-                        """
-                    ),
+                        """),
                     {
                         "tid": str(tenant_b),
                         "nome": "evil.csv",
@@ -140,23 +136,19 @@ async def test_rls_applies_to_spend_clusters_and_spend_linhas(
             upload_id_a = await _seed_upload(db_session, tenant_a, "a.csv")
             cluster_id_a = (
                 await db_session.execute(
-                    text(
-                        """
+                    text("""
                         INSERT INTO spend_clusters (tenant_id, upload_id, nome_cluster)
                         VALUES (:tid, :uid, 'A cluster') RETURNING id
-                        """
-                    ),
+                        """),
                     {"tid": str(tenant_a), "uid": str(upload_id_a)},
                 )
             ).scalar_one()
             await db_session.execute(
-                text(
-                    """
+                text("""
                     INSERT INTO spend_linhas
                         (tenant_id, upload_id, descricao_original, cluster_id)
                     VALUES (:tid, :uid, 'item A', :cid)
-                    """
-                ),
+                    """),
                 {
                     "tid": str(tenant_a),
                     "uid": str(upload_id_a),
