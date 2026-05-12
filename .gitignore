@@ -28,6 +28,9 @@ build/
 .vscode/
 *.swp
 
+# Claude Code per-user settings (personal permissions overrides)
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
