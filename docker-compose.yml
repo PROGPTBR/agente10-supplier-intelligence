@@ -5,6 +5,9 @@ services:
       POSTGRES_USER: agente10
       POSTGRES_PASSWORD: agente10_dev
       POSTGRES_DB: agente10
+    # NOTE: After `make load-empresas` the `empresas` table reaches ~30GB on disk.
+    # Ensure the host has ~60GB free during ingestion (30GB SQLite intermediate
+    # + 30GB Postgres + working space). The named volume below grows automatically.
     volumes:
       - pg_data:/var/lib/postgresql/data
     ports:

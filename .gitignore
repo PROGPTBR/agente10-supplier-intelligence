@@ -44,3 +44,8 @@ htmlcov/
 # CNAE raw dumps (XLS) are not committed; only parsed JSON is.
 backend/data/cnae_2.3/raw/*.xls
 backend/data/cnae_2.3/raw/*.xlsx
+
+# Receita Federal bulk ingestion intermediate (~30GB)
+backend/data/cnpj.db
+backend/data/cnpj.db-*
+backend/data/cnpj_sqlite_cache/
