@@ -55,7 +55,19 @@ fi
 # "Pressione Enter"). We pipe `yes` to auto-confirm everything. The download
 # step also asks to wipe existing files on re-run — which is what we want for
 # idempotent monthly refresh.
-for ENTRY in dados_cnpj_baixa.py dados_cnpj_para_sqlite.py; do
+# Skip the downloader if all 37 zips are already present (e.g., a previous
+# run downloaded them but the parser failed). Avoids re-downloading ~10GB on
+# every retry.
+ZIP_COUNT=$(ls dados-publicos-zip/*.zip 2>/dev/null | wc -l | tr -d ' ')
+if [ "$ZIP_COUNT" = "37" ]; then
+    echo "==> Skipping downloader: all 37 zips already present in dados-publicos-zip/"
+    SCRIPTS_TO_RUN="dados_cnpj_para_sqlite.py"
+else
+    echo "==> $ZIP_COUNT/37 zips present — running full pipeline (download + parse)"
+    SCRIPTS_TO_RUN="dados_cnpj_baixa.py dados_cnpj_para_sqlite.py"
+fi
+
+for ENTRY in $SCRIPTS_TO_RUN; do
     if [ ! -f "$ENTRY" ]; then
         echo "ERROR: upstream script $ENTRY missing in $CACHE_DIR" >&2
         echo "Has rictom/cnpj-sqlite layout changed?" >&2
