@@ -30,8 +30,16 @@ cd "$CACHE_DIR"
 
 echo "==> Setting up Python venv inside $CACHE_DIR/.venv"
 python3 -m venv .venv
-.venv/bin/pip install --quiet --upgrade pip
-.venv/bin/pip install --quiet -r requirements.txt
+
+# venv binary directory: Windows uses Scripts/, Unix uses bin/
+if [ -d ".venv/Scripts" ]; then
+    VENV_BIN=".venv/Scripts"
+else
+    VENV_BIN=".venv/bin"
+fi
+
+"$VENV_BIN/pip" install --quiet --upgrade pip
+"$VENV_BIN/pip" install --quiet -r requirements.txt
 
 # rictom's entry script. As of v0.7 (mar/2026) the script that runs the full
 # pipeline is `dados_cnpj_baixar_e_processar_v07.py`. The exact name may drift —
@@ -43,7 +51,7 @@ if [ -z "$ENTRY" ]; then
     exit 1
 fi
 echo "==> Running upstream pipeline: $ENTRY (this takes 1-2h)"
-.venv/bin/python "$ENTRY"
+"$VENV_BIN/python" "$ENTRY"
 
 # Upstream writes cnpj.db into its own directory. Move it into our data dir.
 if [ ! -f cnpj.db ]; then
