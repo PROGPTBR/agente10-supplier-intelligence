@@ -44,17 +44,26 @@ fi
 # ourselves — stock venv pip is fine for rictom's requirements.txt.
 "$VENV_BIN/python" -m pip install --quiet -r requirements.txt
 
-# rictom's entry script. As of v0.7 (mar/2026) the script that runs the full
-# pipeline is `dados_cnpj_baixar_e_processar_v07.py`. The exact name may drift —
-# the loop below picks the most recent `dados_cnpj_*.py` matcher.
-ENTRY=$(ls -t dados_cnpj_*.py 2>/dev/null | head -n1 || true)
-if [ -z "$ENTRY" ]; then
-    echo "ERROR: could not locate rictom entry script in $CACHE_DIR" >&2
-    echo "Expected file matching dados_cnpj_*.py" >&2
-    exit 1
-fi
-echo "==> Running upstream pipeline: $ENTRY (this takes 1-2h)"
-"$VENV_BIN/python" "$ENTRY"
+# rictom's pipeline has two sequential scripts (verified against repo v0.7+):
+#   1) dados_cnpj_baixa.py        — downloads RF ZIP files into dados-publicos-zip/
+#   2) dados_cnpj_para_sqlite.py  — parses the ZIPs into cnpj.db
+# (A third optional script `dados_cnpj_cnae_secundaria.py` builds a normalized
+#  secondary-CNAE index table — our transform reads est.cnae_fiscal_secundaria
+#  directly, so we skip it.)
+#
+# Both scripts have interactive input() prompts ("Deseja prosseguir?",
+# "Pressione Enter"). We pipe `yes` to auto-confirm everything. The download
+# step also asks to wipe existing files on re-run — which is what we want for
+# idempotent monthly refresh.
+for ENTRY in dados_cnpj_baixa.py dados_cnpj_para_sqlite.py; do
+    if [ ! -f "$ENTRY" ]; then
+        echo "ERROR: upstream script $ENTRY missing in $CACHE_DIR" >&2
+        echo "Has rictom/cnpj-sqlite layout changed?" >&2
+        exit 1
+    fi
+    echo "==> Running upstream: $ENTRY"
+    yes | "$VENV_BIN/python" "$ENTRY"
+done
 
 # Upstream writes cnpj.db into its own directory. Move it into our data dir.
 if [ ! -f cnpj.db ]; then
