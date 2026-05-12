@@ -119,17 +119,54 @@ async def two_tenants(db_engine: AsyncEngine) -> AsyncIterator[tuple[uuid.UUID, 
         )
 
 
-# --- Voyage marker handling --------------------------------------------------
+# --- Voyage + rf_ingested marker handling ------------------------------------
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip tests marked ``voyage`` when ``VOYAGE_API_KEY`` is not set."""
-    if os.environ.get("VOYAGE_API_KEY"):
-        return
-    skip_voyage = pytest.mark.skip(reason="VOYAGE_API_KEY not set")
+    """Apply conditional skips:
+
+    - ``voyage``: skip if ``VOYAGE_API_KEY`` is not set.
+    - ``rf_ingested``: skip if Postgres ``empresas`` has fewer than 1M rows.
+    """
+    skip_voyage = (
+        None
+        if os.environ.get("VOYAGE_API_KEY")
+        else pytest.mark.skip(reason="VOYAGE_API_KEY not set")
+    )
+    skip_rf = (
+        None
+        if _rf_base_populated()
+        else pytest.mark.skip(
+            reason="empresas not populated (<1M rows); run `make load-empresas` first"
+        )
+    )
     for item in items:
-        if "voyage" in item.keywords:
+        if skip_voyage and "voyage" in item.keywords:
             item.add_marker(skip_voyage)
+        if skip_rf and "rf_ingested" in item.keywords:
+            item.add_marker(skip_rf)
+
+
+def _rf_base_populated() -> bool:
+    """Return True if the integration Postgres has >=1M rows in empresas.
+
+    Synchronous check via psycopg2-binary (already an asyncpg transitive). Failures
+    (DB unreachable, table missing) return False so tests skip rather than error.
+    """
+    dsn = os.environ.get("INTEGRATION_DATABASE_URL")
+    if not dsn:
+        return False
+    # Convert SQLAlchemy-style asyncpg URL to libpq form
+    dsn = dsn.replace("postgresql+asyncpg://", "postgresql://")
+    try:
+        import psycopg2
+
+        with psycopg2.connect(dsn, connect_timeout=2) as conn, conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM empresas")
+            (count,) = cur.fetchone()
+            return count >= 1_000_000
+    except Exception:
+        return False
 
 
 @pytest.fixture(scope="session")
