@@ -61,7 +61,8 @@ async def test_uf_filter_excludes_others(db_session):
 @pytest.mark.asyncio
 async def test_secondary_only_match_returns_via_array(db_session):
     await _load_synthetic(db_session)
-    # 4684201 only appears as secondary in synthetic; primary 4684201 itself exists for row 62
+    # Row 62 has cnae_primario='4684201'; 4744001 appears only in its cnaes_secundarios.
+    # Querying for 4744001 should still return row 62, with primary_match=False.
     candidates = await find_empresas_by_cnae(db_session, "4744001", limit=25)
     # Row 62 has 4744001 in secondaries only; should appear with primary_match=False
     cnpjs = {c.cnpj: c for c in candidates}
@@ -84,7 +85,8 @@ async def test_respects_limit(db_session):
 @pytest.mark.asyncio
 async def test_golden_recall_at_25(db_session):
     """Known-CNPJ recall@25 against the real RF dump."""
-    rows = list(csv.DictReader(open(GOLDEN_CSV, encoding="utf-8")))
+    with GOLDEN_CSV.open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
     assert len(rows) >= 10
 
     misses: list[tuple[str, str, list[str]]] = []

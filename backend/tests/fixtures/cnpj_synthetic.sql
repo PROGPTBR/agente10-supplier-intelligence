@@ -1,3 +1,7 @@
+-- WARNING: Do NOT use semicolons inside comments. The test loader uses
+-- sql.split on the semicolon character, which is naive and would split this
+-- file mid-statement. Use commas or em-dashes instead.
+
 -- Synthetic empresas fixture: 10 ATIVA empresas across multiple CNAEs in 7 UFs.
 --
 -- Coverage:
