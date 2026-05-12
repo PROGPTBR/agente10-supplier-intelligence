@@ -117,3 +117,24 @@ async def two_tenants(db_engine: AsyncEngine) -> AsyncIterator[tuple[uuid.UUID, 
             text("DELETE FROM tenants WHERE id IN (:a, :b)"),
             {"a": str(tenant_a), "b": str(tenant_b)},
         )
+
+
+# --- Voyage marker handling --------------------------------------------------
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests marked ``voyage`` when ``VOYAGE_API_KEY`` is not set."""
+    if os.environ.get("VOYAGE_API_KEY"):
+        return
+    skip_voyage = pytest.mark.skip(reason="VOYAGE_API_KEY not set")
+    for item in items:
+        if "voyage" in item.keywords:
+            item.add_marker(skip_voyage)
+
+
+@pytest.fixture(scope="session")
+async def voyage_client():
+    """Session-scoped Voyage client; tests marked ``voyage`` are skipped without API key."""
+    from agente10.integrations.voyage import VoyageClient
+
+    return VoyageClient()

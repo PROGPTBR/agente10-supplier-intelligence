@@ -29,8 +29,14 @@ async def top_k_cnaes(
     query_embedding: list[float],
     k: int = 10,
 ) -> list[CnaeCandidate]:
-    """Return the k CNAE subclasses most similar to ``query_embedding`` (cosine)."""
+    """Return the k CNAE subclasses most similar to ``query_embedding`` (cosine).
+
+    Sets ``ivfflat.probes = 20`` so the scan widens to ~50% of the 40 lists,
+    which is needed for stable top-k retrieval — with the default probes=1
+    the index visits only one centroid and frequently returns fewer than k rows.
+    """
     emb_str = "[" + ",".join(f"{x:.6f}" for x in query_embedding) + "]"
+    await db.execute(text("SET ivfflat.probes = 20"))
     result = await db.execute(_TOP_K_SQL, {"emb": emb_str, "k": k})
     return [
         CnaeCandidate(
