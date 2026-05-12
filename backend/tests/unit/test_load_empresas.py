@@ -110,3 +110,23 @@ def test_handles_empty_secondary_cnaes(sqlite_with_2_empresas):
     ]
     assert len(rows) == 1
     assert rows[0]["cnaes_secundarios"] == []
+
+
+def test_handles_unknown_municipio_code(sqlite_with_2_empresas):
+    """When estabelecimento.municipio has no match in the municipio lookup table,
+    the LEFT JOIN should produce row['municipio'] = None."""
+    sqlite_with_2_empresas.execute(
+        """INSERT INTO empresa VALUES ('44444444','UNKNOWN MUN LTDA','2062','01',5000)"""
+    )
+    sqlite_with_2_empresas.execute("""INSERT INTO estabelecimento VALUES
+            ('44444444','0001','04','','02','20210515',
+             '4744001','',
+             'Rua','D','4','','',
+             '04000000','GO','XXXX',
+             '62','3','z@y.com')""")
+    # Note: NO matching INSERT into municipio table — the code 'XXXX' doesn't exist
+    rows = [
+        r for r in build_empresa_rows(sqlite_with_2_empresas) if r["cnpj"].startswith("44444444")
+    ]
+    assert len(rows) == 1
+    assert rows[0]["municipio"] is None

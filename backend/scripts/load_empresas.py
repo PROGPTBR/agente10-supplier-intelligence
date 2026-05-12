@@ -8,6 +8,9 @@ Writes: ~30M rows into the Postgres empresas table via INSERT ... ON CONFLICT (c
 
 Filters: situacao_cadastral = '02' (ATIVA per RF code table).
 
+Transactions: each 100k-row chunk runs in its own transaction. A crash mid-load
+leaves the table partially populated; re-run is idempotent (UPSERT) and heals it.
+
 Connects via DATABASE_URL (asyncpg-form is auto-converted to libpq form).
 """
 
@@ -138,7 +141,7 @@ def build_empresa_rows(conn: sqlite3.Connection) -> Iterator[dict[str, Any]]:
             "municipio": r["municipio"],
             "cep": r["cep"],
             "endereco": r["endereco"] or None,
-            "telefone": (r["telefone"] or None) if r["telefone"] else None,
+            "telefone": r["telefone"] or None,
             "email": r["email"],
             "geom": None,
         }
@@ -160,61 +163,64 @@ async def main() -> int:
         return 2
 
     sqlite_conn = sqlite3.connect(str(DATA_PATH))
-    _check_schema(sqlite_conn)
-    pg_conn = await asyncpg.connect(_dsn())
-
     try:
-        t0 = time.perf_counter()
-        chunk: list[tuple] = []
-        total = 0
+        _check_schema(sqlite_conn)
+        pg_conn = await asyncpg.connect(_dsn())
+        try:
+            t0 = time.perf_counter()
+            chunk: list[tuple] = []
+            total = 0
 
-        for row in build_empresa_rows(sqlite_conn):
-            chunk.append(
-                (
-                    row["cnpj"],
-                    row["razao_social"],
-                    row["nome_fantasia"],
-                    row["cnae_primario"],
-                    row["cnaes_secundarios"],
-                    row["data_abertura"],
-                    row["porte"],
-                    row["capital_social"],
-                    row["natureza_juridica"],
-                    row["uf"],
-                    row["municipio"],
-                    row["cep"],
-                    row["endereco"],
-                    row["telefone"],
-                    row["email"],
+            for row in build_empresa_rows(sqlite_conn):
+                chunk.append(
+                    (
+                        row["cnpj"],
+                        row["razao_social"],
+                        row["nome_fantasia"],
+                        row["cnae_primario"],
+                        row["cnaes_secundarios"],
+                        row["data_abertura"],
+                        row["porte"],
+                        row["capital_social"],
+                        row["natureza_juridica"],
+                        row["uf"],
+                        row["municipio"],
+                        row["cep"],
+                        row["endereco"],
+                        row["telefone"],
+                        row["email"],
+                    )
                 )
-            )
-            if len(chunk) >= CHUNK_SIZE:
+                if len(chunk) >= CHUNK_SIZE:
+                    async with pg_conn.transaction():
+                        await pg_conn.executemany(UPSERT_SQL, chunk)
+                    total += len(chunk)
+                    chunk.clear()
+                    print(f"  upserted {total:,} rows ({time.perf_counter() - t0:.1f}s)")
+
+            if chunk:
                 async with pg_conn.transaction():
                     await pg_conn.executemany(UPSERT_SQL, chunk)
                 total += len(chunk)
-                chunk.clear()
-                print(f"  upserted {total:,} rows ({time.perf_counter() - t0:.1f}s)")
 
-        if chunk:
-            async with pg_conn.transaction():
-                await pg_conn.executemany(UPSERT_SQL, chunk)
-            total += len(chunk)
-
-        await pg_conn.execute("ANALYZE empresas;")
-        count = await pg_conn.fetchval("SELECT COUNT(*) FROM empresas")
-        elapsed = time.perf_counter() - t0
-        print(f"\nDone — {total:,} rows upserted, table now has {count:,} rows in {elapsed:.1f}s")
-
-        if count < MIN_EXPECTED_ROWS:
+            await pg_conn.execute("ANALYZE empresas;")
+            count = await pg_conn.fetchval("SELECT COUNT(*) FROM empresas")
+            elapsed = time.perf_counter() - t0
             print(
-                f"WARNING: empresas count = {count:,} < expected >= {MIN_EXPECTED_ROWS:,}. "
-                f"Check upstream RF dump completeness.",
-                file=sys.stderr,
+                f"\nDone — {total:,} rows upserted, table now has {count:,} rows in {elapsed:.1f}s"
             )
-            return 1
+
+            if count < MIN_EXPECTED_ROWS:
+                print(
+                    f"WARNING: empresas count = {count:,} < expected >= {MIN_EXPECTED_ROWS:,}. "
+                    f"Check upstream RF dump completeness.",
+                    file=sys.stderr,
+                )
+                return 1
+        finally:
+            await pg_conn.close()
     finally:
         sqlite_conn.close()
-        await pg_conn.close()
 
     return 0
 
