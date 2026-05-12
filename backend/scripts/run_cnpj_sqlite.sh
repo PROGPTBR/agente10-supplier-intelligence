@@ -44,6 +44,14 @@ fi
 # ourselves — stock venv pip is fine for rictom's requirements.txt.
 "$VENV_BIN/python" -m pip install --quiet -r requirements.txt
 
+# Patch rictom's parser to chunk CSV reads via dask blocksize=256MB.
+# Without this, MemoryError on Estabelecimentos*.zip (multi-GB CSVs) on
+# machines with <32GB RAM. Idempotent — skips if already patched.
+if ! grep -q "blocksize='256MB'" dados_cnpj_para_sqlite.py; then
+    echo "==> Patching dados_cnpj_para_sqlite.py: dask blocksize='256MB'"
+    sed -i.bak "s/dtype=str, na_filter=None)/dtype=str, na_filter=None, blocksize='256MB')/" dados_cnpj_para_sqlite.py
+fi
+
 # rictom's pipeline has two sequential scripts (verified against repo v0.7+):
 #   1) dados_cnpj_baixa.py        — downloads RF ZIP files into dados-publicos-zip/
 #   2) dados_cnpj_para_sqlite.py  — parses the ZIPs into cnpj.db
