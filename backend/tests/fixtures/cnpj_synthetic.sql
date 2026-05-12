@@ -7,7 +7,7 @@
 --
 -- data_abertura ranges 1995-2024 to exercise ORDER BY data_abertura ASC.
 --
--- Run inside a transaction; rolled back by the db_session fixture.
+-- Run inside a transaction — rolled back by the db_session fixture.
 
 INSERT INTO empresas (cnpj, razao_social, nome_fantasia,
                       cnae_primario, cnaes_secundarios,
