@@ -32,11 +32,15 @@ services:
       DATABASE_URL: postgresql+asyncpg://agente10:agente10_dev@postgres:5432/agente10
       REDIS_URL: redis://redis:6379/0
       ENV: local
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      VOYAGE_MODEL: ${VOYAGE_MODEL:-voyage-3}
     volumes:
       - ./backend/src:/app/src
       - ./backend/tests:/app/tests
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/scripts:/app/scripts
+      - ./backend/data:/app/data
     depends_on:
       postgres:
         condition: service_healthy

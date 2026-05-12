@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     redis_url: str
     env: Literal["local", "staging", "production"] = "local"
 
+    voyage_api_key: str | None = None
+    voyage_model: str = "voyage-3"
+
 
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]

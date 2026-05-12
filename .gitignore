@@ -37,3 +37,7 @@ coverage/
 htmlcov/
 .coverage
 .nyc_output/
+
+# CNAE raw dumps (XLS) are not committed; only parsed JSON is.
+backend/data/cnae_2.3/raw/*.xls
+backend/data/cnae_2.3/raw/*.xlsx
