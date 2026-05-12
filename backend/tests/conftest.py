@@ -121,6 +121,8 @@ async def two_tenants(db_engine: AsyncEngine) -> AsyncIterator[tuple[uuid.UUID, 
 
 # --- Voyage + rf_ingested marker handling ------------------------------------
 
+MIN_EMPRESAS_ROWS_FOR_RF_TESTS = 1_000_000
+
 
 def pytest_collection_modifyitems(config, items):
     """Apply conditional skips:
@@ -150,8 +152,8 @@ def pytest_collection_modifyitems(config, items):
 def _rf_base_populated() -> bool:
     """Return True if the integration Postgres has >=1M rows in empresas.
 
-    Synchronous check via psycopg2-binary (already an asyncpg transitive). Failures
-    (DB unreachable, table missing) return False so tests skip rather than error.
+    Synchronous check via psycopg2-binary. Failures (DB unreachable, table
+    missing) return False so tests skip rather than error.
     """
     dsn = os.environ.get("INTEGRATION_DATABASE_URL")
     if not dsn:
@@ -161,10 +163,10 @@ def _rf_base_populated() -> bool:
     try:
         import psycopg2
 
-        with psycopg2.connect(dsn, connect_timeout=2) as conn, conn.cursor() as cur:
+        with psycopg2.connect(dsn, connect_timeout=5) as conn, conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM empresas")
             (count,) = cur.fetchone()
-            return count >= 1_000_000
+            return count >= MIN_EMPRESAS_ROWS_FOR_RF_TESTS
     except Exception:
         return False
 
