@@ -1,18 +1,20 @@
-.PHONY: help up down logs build test test-backend test-frontend lint lint-backend lint-frontend fmt migrate install-hooks clean
+.PHONY: help up down logs build test test-backend test-backend-integration test-frontend test-integration lint lint-backend lint-frontend fmt migrate install-hooks clean
 
 help:
 	@echo "Targets:"
-	@echo "  up              start the full dev stack (postgres, redis, backend, frontend)"
-	@echo "  down            stop and remove containers + volumes"
-	@echo "  logs            tail logs of all services"
-	@echo "  build           rebuild images"
-	@echo "  test            run backend + frontend tests"
-	@echo "  test-backend    run backend tests only"
-	@echo "  test-frontend   run frontend tests only"
-	@echo "  lint            run all linters"
-	@echo "  fmt             apply formatters"
-	@echo "  migrate         apply alembic migrations"
-	@echo "  install-hooks   install pre-commit hooks"
+	@echo "  up                    start the full dev stack (postgres, redis, backend, frontend)"
+	@echo "  down                  stop and remove containers + volumes"
+	@echo "  logs                  tail logs of all services"
+	@echo "  build                 rebuild images"
+	@echo "  test                  run backend + frontend tests (excludes integration)"
+	@echo "  test-backend          run backend unit tests"
+	@echo "  test-backend-integration  run backend integration tests (requires postgres)"
+	@echo "  test-frontend         run frontend tests only"
+	@echo "  test-integration      run all integration tests"
+	@echo "  lint                  run all linters"
+	@echo "  fmt                   apply formatters"
+	@echo "  migrate               apply alembic migrations"
+	@echo "  install-hooks         install pre-commit hooks"
 
 up:
 	docker compose up -d --build
@@ -30,12 +32,18 @@ migrate:
 	docker compose run --rm backend uv run alembic upgrade head
 
 test-backend:
-	docker compose run --rm backend uv run pytest -q
+	docker compose run --rm backend uv run pytest -q -m "not integration"
+
+test-backend-integration:
+	docker compose up -d postgres
+	docker compose run --rm backend uv run pytest -q -m integration
 
 test-frontend:
 	cd frontend && pnpm test
 
 test: test-backend test-frontend
+
+test-integration: test-backend-integration
 
 lint-backend:
 	docker compose run --rm backend uv run ruff check src tests
