@@ -3,13 +3,14 @@
 Usage:
     cd backend && uv run python scripts/parse_ibge_xls.py
 
-Reads:  data/cnae_2.3/raw/CNAE_2.3_Estrutura_Detalhada.xlsx
+Reads:  data/cnae_2.3/raw/CNAE_Subclasses_2_3_Estrutura_Detalhada.xlsx
 Writes: data/cnae_2.3/taxonomy.json (1331 entries; raises if count differs)
 
-The IBGE XLSX uses merged cells for Seção / Divisão / Grupo / Classe so we forward-fill
-those columns. Subclass rows are detected by a 7-digit-ish code pattern; the description
-columns immediately below a subclass row contain the "Esta subclasse compreende:" /
-"compreende também:" / "não compreende:" notes (multi-line).
+The IBGE XLSX has six columns: A=Seção, B=Divisão, C=Grupo, D=Classe, E=Subclasse,
+F=Denominação. Hierarchy levels use merged cells (so higher levels appear in their own
+column, not cascaded into column A). Subclass rows are detected by a 7-digit-ish code
+in column E. This workbook does not include the "Esta subclasse compreende:" notes text,
+so notas_explicativas and exemplos_atividades are null for all entries.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from openpyxl import load_workbook
 
 RAW_PATH = (
     Path(__file__).parent.parent / "data" / "cnae_2.3" / "raw"
-    / "CNAE_2.3_Estrutura_Detalhada.xlsx"
+    / "CNAE_Subclasses_2_3_Estrutura_Detalhada.xlsx"
 )
 OUT_PATH = Path(__file__).parent.parent / "data" / "cnae_2.3" / "taxonomy.json"
 EXPECTED_COUNT = 1331
@@ -35,6 +36,14 @@ DIVISAO_RE = re.compile(r"^\s*(\d{2})\s*$")
 GRUPO_RE = re.compile(r"^\s*(\d{2})[\.\-](\d)\s*$")
 CLASSE_RE = re.compile(r"^\s*(\d{2})[\.\-](\d{2})[\-](\d)\s*$")
 SECAO_RE = re.compile(r"^\s*([A-U])\s*$")
+
+# Column indices (0-based) in the IBGE "Estrutura Detalhada" XLSX
+COL_SECAO = 0
+COL_DIVISAO = 1
+COL_GRUPO = 2
+COL_CLASSE = 3
+COL_SUBCLASSE = 4
+COL_DENOM = 5
 
 
 def _norm_code(raw: str) -> str | None:
@@ -50,10 +59,12 @@ def _norm_code(raw: str) -> str | None:
 def _extract_rows(xls_path: Path) -> list[dict]:
     """Walk the workbook and emit one dict per CNAE subclass.
 
-    Strategy: keep cursors for current Seção/Divisão/Grupo/Classe. A row whose first
-    code cell matches the subclass pattern starts a new subclass. Subsequent rows whose
-    first cell is empty append to the current subclass's notes_explicativas until a new
-    code (any level) appears.
+    Column layout (0-indexed):
+      0=Seção  1=Divisão  2=Grupo  3=Classe  4=Subclasse  5=Denominação
+
+    Higher-level columns use merged cells, so a non-empty value in col 0 means a new
+    Seção, col 1 a new Divisão, etc. We forward-fill each level independently.
+    A row with a non-empty col 4 that matches the subclass regex is a subclass row.
     """
     wb = load_workbook(xls_path, data_only=True)
     ws = wb.active
@@ -62,62 +73,46 @@ def _extract_rows(xls_path: Path) -> list[dict]:
     current_divisao: str | None = None
     current_grupo: str | None = None
     current_classe: str | None = None
-    current_subclass: dict | None = None
     rows: list[dict] = []
-    note_buffer: list[str] = []
 
-    def flush_subclass() -> None:
-        nonlocal note_buffer
-        if current_subclass is None:
-            return
-        full_notes = "\n".join(s for s in note_buffer if s).strip() or None
-        current_subclass["notas_explicativas"] = full_notes
-        current_subclass["exemplos_atividades"] = _extract_compreende(full_notes)
-        rows.append(current_subclass)
-        note_buffer = []
+    def _cell(row: tuple, idx: int) -> str:
+        v = row[idx] if idx < len(row) else None
+        return str(v).strip() if v is not None else ""
 
     for raw_row in ws.iter_rows(values_only=True):
-        cells = [str(c).strip() if c is not None else "" for c in raw_row]
-        if not any(cells):
-            continue
+        secao_val = _cell(raw_row, COL_SECAO)
+        divisao_val = _cell(raw_row, COL_DIVISAO)
+        grupo_val = _cell(raw_row, COL_GRUPO)
+        classe_val = _cell(raw_row, COL_CLASSE)
+        subclasse_val = _cell(raw_row, COL_SUBCLASSE)
 
-        first = cells[0]
+        # Update hierarchy cursors
+        if SECAO_RE.match(secao_val):
+            current_secao = secao_val
+        if DIVISAO_RE.match(divisao_val):
+            current_divisao = divisao_val
+        if GRUPO_RE.match(grupo_val):
+            current_grupo = grupo_val.replace("-", ".").replace("/", ".").replace(".", "")[:3]
+        if CLASSE_RE.match(classe_val):
+            current_classe = re.sub(r"\D", "", classe_val)[:5]
 
-        if SECAO_RE.match(first):
-            current_secao = first.strip()
-            continue
-        if DIVISAO_RE.match(first):
-            current_divisao = first.strip()
-            continue
-        if GRUPO_RE.match(first):
-            current_grupo = first.replace("-", ".").replace("/", ".").replace(".", "")[:3]
-            continue
-        if CLASSE_RE.match(first):
-            current_classe = re.sub(r"\D", "", first)[:5]
-            continue
-
-        code = _norm_code(first)
+        # Detect subclass row
+        code = _norm_code(subclasse_val)
         if code is not None:
-            flush_subclass()
-            denominacao = next((c for c in cells[1:] if c), "")
-            current_subclass = {
-                "codigo": code,
-                "secao": current_secao,
-                "divisao": current_divisao,
-                "grupo": current_grupo,
-                "classe": current_classe,
-                "denominacao": denominacao,
-                "notas_explicativas": None,
-                "exemplos_atividades": None,
-            }
-            continue
+            denominacao = _cell(raw_row, COL_DENOM)
+            rows.append(
+                {
+                    "codigo": code,
+                    "secao": current_secao,
+                    "divisao": current_divisao,
+                    "grupo": current_grupo,
+                    "classe": current_classe,
+                    "denominacao": denominacao,
+                    "notas_explicativas": None,
+                    "exemplos_atividades": None,
+                }
+            )
 
-        if current_subclass is not None:
-            text = " ".join(c for c in cells if c).strip()
-            if text:
-                note_buffer.append(text)
-
-    flush_subclass()
     return rows
 
 
