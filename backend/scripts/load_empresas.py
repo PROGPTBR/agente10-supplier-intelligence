@@ -35,7 +35,7 @@ MIN_EXPECTED_ROWS = 25_000_000  # margin below 35M for monthly RF variation
 # Sentinel row used to detect schema drift before processing 30M rows.
 _SCHEMA_CHECK_SQL = """
 SELECT name FROM sqlite_master WHERE type='table'
-  AND name IN ('empresa','estabelecimento','municipio');
+  AND name IN ('empresas','estabelecimento','municipio');
 """
 
 # Main transform query — JOIN empresas + estabelecimento + municipio (lookup).
@@ -111,7 +111,7 @@ ON CONFLICT (cnpj) DO UPDATE SET
 
 def _check_schema(conn: sqlite3.Connection) -> None:
     rows = {r[0] for r in conn.execute(_SCHEMA_CHECK_SQL)}
-    expected = {"empresa", "estabelecimento", "municipio"}
+    expected = {"empresas", "estabelecimento", "municipio"}
     missing = expected - rows
     if missing:
         raise RuntimeError(
