@@ -94,12 +94,13 @@ for ENTRY in $SCRIPTS_TO_RUN; do
     fi
 done
 
-# Upstream writes cnpj.db into its own directory. Move it into our data dir.
-if [ ! -f cnpj.db ]; then
-    echo "ERROR: upstream did not produce cnpj.db in $CACHE_DIR" >&2
+# Upstream parser writes cnpj.db inside dados-publicos/. Move it to our data dir.
+SOURCE_DB="dados-publicos/cnpj.db"
+if [ ! -f "$SOURCE_DB" ]; then
+    echo "ERROR: upstream did not produce $SOURCE_DB in $CACHE_DIR" >&2
     exit 1
 fi
 
-mv cnpj.db "$TARGET_DB"
+mv "$SOURCE_DB" "$TARGET_DB"
 SIZE=$(du -h "$TARGET_DB" | cut -f1)
 echo "==> OK — wrote $TARGET_DB ($SIZE)"
