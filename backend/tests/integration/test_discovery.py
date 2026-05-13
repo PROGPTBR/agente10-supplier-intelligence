@@ -35,7 +35,7 @@ async def _load_synthetic(db_session) -> None:
 @pytest.mark.asyncio
 async def test_returns_typed_candidates(db_session):
     await _load_synthetic(db_session)
-    candidates = await find_empresas_by_cnae(db_session, "4744001", limit=10)
+    candidates = await find_empresas_by_cnae(db_session, "9991001", limit=10)
     assert len(candidates) > 0
     assert all(isinstance(c, EmpresaCandidate) for c in candidates)
     assert all(len(c.cnpj) == 14 for c in candidates)
@@ -45,7 +45,7 @@ async def test_returns_typed_candidates(db_session):
 @pytest.mark.asyncio
 async def test_primary_matches_come_before_secondary(db_session):
     await _load_synthetic(db_session)
-    candidates = await find_empresas_by_cnae(db_session, "4744001", limit=25)
+    candidates = await find_empresas_by_cnae(db_session, "9991001", limit=25)
     flags = [c.primary_match for c in candidates]
     # All True flags must precede the first False flag
     assert flags == sorted(flags, reverse=True)
@@ -54,7 +54,7 @@ async def test_primary_matches_come_before_secondary(db_session):
 @pytest.mark.asyncio
 async def test_uf_filter_excludes_others(db_session):
     await _load_synthetic(db_session)
-    candidates = await find_empresas_by_cnae(db_session, "4744001", uf="SP", limit=25)
+    candidates = await find_empresas_by_cnae(db_session, "9991001", uf="SP", limit=25)
     assert all(c.uf == "SP" for c in candidates)
 
 
@@ -63,7 +63,7 @@ async def test_secondary_only_match_returns_via_array(db_session):
     await _load_synthetic(db_session)
     # Row 62 has cnae_primario='4684201'; 4744001 appears only in its cnaes_secundarios.
     # Querying for 4744001 should still return row 62, with primary_match=False.
-    candidates = await find_empresas_by_cnae(db_session, "4744001", limit=25)
+    candidates = await find_empresas_by_cnae(db_session, "9991001", limit=25)
     # Row 62 has 4744001 in secondaries only; should appear with primary_match=False
     cnpjs = {c.cnpj: c for c in candidates}
     assert "00000062000101" in cnpjs
@@ -74,7 +74,7 @@ async def test_secondary_only_match_returns_via_array(db_session):
 async def test_respects_limit(db_session):
     await _load_synthetic(db_session)
     for k in (1, 3, 10):
-        candidates = await find_empresas_by_cnae(db_session, "4744001", limit=k)
+        candidates = await find_empresas_by_cnae(db_session, "9991001", limit=k)
         assert len(candidates) <= k
 
 
