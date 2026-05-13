@@ -42,12 +42,56 @@ class UploadCreated(BaseModel):
     status: str
 
 
+class UploadSummary(BaseModel):
+    upload_id: UUID
+    nome_arquivo: str
+    status: str
+    linhas_total: int
+    linhas_classificadas: int
+    data_upload: str
+    progresso_pct: float
+
+
 class UploadStatus(BaseModel):
     upload_id: UUID
     status: str
     linhas_total: int
     linhas_classificadas: int
     erro: str | None
+    progresso_pct: float
+
+
+@router.get("/uploads", response_model=list[UploadSummary])
+async def list_uploads(
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> list[UploadSummary]:
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            result = await session.execute(
+                text(
+                    "SELECT id, nome_arquivo, status, linhas_total, "
+                    "linhas_classificadas, data_upload "
+                    "FROM spend_uploads "
+                    "ORDER BY data_upload DESC"
+                )
+            )
+            rows = result.all()
+    out: list[UploadSummary] = []
+    for r in rows:
+        pct = (r.linhas_classificadas / r.linhas_total * 100.0) if r.linhas_total else 0.0
+        out.append(
+            UploadSummary(
+                upload_id=r.id,
+                nome_arquivo=r.nome_arquivo,
+                status=r.status,
+                linhas_total=r.linhas_total,
+                linhas_classificadas=r.linhas_classificadas,
+                data_upload=r.data_upload.isoformat(),
+                progresso_pct=round(pct, 2),
+            )
+        )
+    return out
 
 
 @router.post("/uploads", response_model=UploadCreated, status_code=202)
@@ -118,10 +162,12 @@ async def get_upload(
             r = row.first()
     if not r:
         raise HTTPException(404, "upload not found")
+    pct = (r.linhas_classificadas / r.linhas_total * 100.0) if r.linhas_total else 0.0
     return UploadStatus(
         upload_id=r.id,
         status=r.status,
         linhas_total=r.linhas_total,
         linhas_classificadas=r.linhas_classificadas,
         erro=r.erro,
+        progresso_pct=round(pct, 2),
     )
