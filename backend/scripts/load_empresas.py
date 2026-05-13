@@ -69,7 +69,8 @@ FROM estabelecimento est
 JOIN empresas e USING (cnpj_basico)
 LEFT JOIN municipio m ON m.codigo = est.municipio
 WHERE est.situacao_cadastral = '02'
-ORDER BY est.cnpj_basico, est.cnpj_ordem
+  AND est.cnpj > ?
+ORDER BY est.cnpj
 """
 
 UPSERT_SQL = """
@@ -126,10 +127,16 @@ def _parse_secondary(csv: str | None) -> list[str]:
     return [c.strip() for c in csv.split(",") if c.strip()]
 
 
-def build_empresa_rows(conn: sqlite3.Connection) -> Iterator[dict[str, Any]]:
-    """Stream rows from the SQLite SELECT and yield Postgres-ready dicts."""
+def build_empresa_rows(
+    conn: sqlite3.Connection, resume_from_cnpj: str = ""
+) -> Iterator[dict[str, Any]]:
+    """Stream rows from the SQLite SELECT and yield Postgres-ready dicts.
+
+    resume_from_cnpj: skip rows with est.cnpj <= this value (lexicographic, but
+    safe for 14-char zero-padded cnpj strings). Pass "" to load all.
+    """
     conn.row_factory = sqlite3.Row
-    cursor = conn.execute(_SELECT_SQL)
+    cursor = conn.execute(_SELECT_SQL, (resume_from_cnpj,))
     for r in cursor:
         yield {
             "cnpj": r["cnpj"],
@@ -167,6 +174,10 @@ async def main() -> int:
         )
         return 2
 
+    resume_from = os.environ.get("RESUME_FROM_CNPJ", "")
+    if resume_from:
+        print(f"Resume mode: skipping est.cnpj <= '{resume_from}'", file=sys.stderr)
+
     sqlite_conn = sqlite3.connect(str(DATA_PATH))
     try:
         _check_schema(sqlite_conn)
@@ -176,7 +187,7 @@ async def main() -> int:
             chunk: list[tuple] = []
             total = 0
 
-            for row in build_empresa_rows(sqlite_conn):
+            for row in build_empresa_rows(sqlite_conn, resume_from_cnpj=resume_from):
                 chunk.append(
                     (
                         row["cnpj"],
