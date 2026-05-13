@@ -5,13 +5,15 @@ from __future__ import annotations
 from datetime import date as date_t
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 
 from agente10.api.uploads import get_tenant_id
 from agente10.core.db import get_session_factory
 from agente10.core.tenancy import tenant_context
+from agente10.curator.client import CuratorClient
+from agente10.estagio3.shortlist_generator import regenerate_shortlist_for_cluster
 
 router = APIRouter(prefix="/api/v1", tags=["clusters"])
 
@@ -52,6 +54,13 @@ class ShortlistEntryView(BaseModel):
     municipio: str | None
     data_abertura: date_t | None
     rank_estagio3: int
+
+
+class ClusterPatch(BaseModel):
+    cnae: str | None = None
+    notas_revisor: str | None = None
+    revisado_humano: bool | None = None
+    handoff_rfx: bool | None = None
 
 
 @router.get("/uploads/{upload_id}/clusters", response_model=list[ClusterSummary])
@@ -196,3 +205,55 @@ async def get_cluster_shortlist(
         )
         for r in rows
     ]
+
+
+@router.patch("/clusters/{cluster_id}", response_model=ClusterDetail)
+async def patch_cluster(
+    cluster_id: UUID,
+    body: ClusterPatch,
+    background: BackgroundTasks,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> ClusterDetail:
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            current = (
+                await session.execute(
+                    text("SELECT cnae FROM spend_clusters WHERE id = :i"),
+                    {"i": str(cluster_id)},
+                )
+            ).first()
+            if not current:
+                raise HTTPException(404, "cluster not found")
+            cnae_changed = body.cnae is not None and body.cnae != current.cnae
+
+            updates: list[str] = []
+            params: dict[str, object] = {"i": str(cluster_id)}
+            if body.cnae is not None:
+                updates.append("cnae = :cnae")
+                params["cnae"] = body.cnae
+                updates.append("cnae_metodo = 'revisado_humano'")
+            if body.notas_revisor is not None:
+                updates.append("notas_revisor = :n")
+                params["n"] = body.notas_revisor
+            if body.revisado_humano is not None:
+                updates.append("revisado_humano = :r")
+                params["r"] = body.revisado_humano
+            if cnae_changed:
+                updates.append("shortlist_gerada = false")
+            if updates:
+                await session.execute(
+                    text(f"UPDATE spend_clusters SET {', '.join(updates)} WHERE id = :i"),
+                    params,
+                )
+
+    if cnae_changed:
+        background.add_task(
+            regenerate_shortlist_for_cluster,
+            cluster_id,
+            tenant_id,
+            factory,
+            CuratorClient(),
+        )
+
+    return await get_cluster(cluster_id, tenant_id=tenant_id)

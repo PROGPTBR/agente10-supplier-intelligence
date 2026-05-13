@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from uuid import UUID
 
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from agente10.curator.client import CuratorClient
 from agente10.curator.shortlist_reranker import RankedSupplier
 from agente10.empresas.discovery import EmpresaCandidate
 
@@ -52,3 +55,58 @@ async def generate_shortlist(
             ShortlistEntry(cnpj=c.cnpj, rank_estagio3=i + 1)
             for i, c in enumerate(deduped_fallback[:SHORTLIST_SIZE])
         ]
+
+
+async def regenerate_shortlist_for_cluster(
+    cluster_id: UUID,
+    tenant_id: UUID,
+    session_factory: async_sessionmaker[AsyncSession],
+    curator: CuratorClient,
+) -> None:
+    """Re-run Estágio 3 for a single cluster: delete old shortlist, re-insert new."""
+    from functools import partial
+
+    from sqlalchemy import text
+
+    from agente10.core.tenancy import tenant_context
+    from agente10.curator.shortlist_reranker import rerank_top10
+    from agente10.empresas.discovery import find_empresas_by_cnae
+
+    async with session_factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            cluster = (
+                await session.execute(
+                    text("SELECT id, cnae, nome_cluster FROM spend_clusters WHERE id = :i"),
+                    {"i": str(cluster_id)},
+                )
+            ).first()
+            if not cluster or not cluster.cnae:
+                return
+            await session.execute(
+                text("DELETE FROM supplier_shortlists " "WHERE cnae = :c AND tenant_id = :t"),
+                {"c": cluster.cnae, "t": str(tenant_id)},
+            )
+            entries = await generate_shortlist(
+                cluster.nome_cluster,
+                cluster.cnae,
+                discovery=lambda cnae: find_empresas_by_cnae(session, cnae, limit=25),
+                rerank=partial(rerank_top10, curator),
+            )
+            for entry in entries:
+                await session.execute(
+                    text(
+                        "INSERT INTO supplier_shortlists "
+                        "(tenant_id, cnae, cnpj_fornecedor, rank_estagio3) "
+                        "VALUES (:t, :c, :cnpj, :r)"
+                    ),
+                    {
+                        "t": str(tenant_id),
+                        "c": cluster.cnae,
+                        "cnpj": entry.cnpj,
+                        "r": entry.rank_estagio3,
+                    },
+                )
+            await session.execute(
+                text("UPDATE spend_clusters SET shortlist_gerada = true WHERE id = :i"),
+                {"i": str(cluster_id)},
+            )
