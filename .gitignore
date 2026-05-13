@@ -28,8 +28,8 @@ build/
 .vscode/
 *.swp
 
-# Claude Code per-user settings (personal permissions overrides)
-.claude/settings.local.json
+# Claude Code per-user state (settings + session lock)
+.claude/
 
 # OS
 .DS_Store

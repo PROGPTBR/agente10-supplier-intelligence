@@ -35,7 +35,9 @@ _QUERY = text("""
       AND situacao_cadastral = 'ATIVA'
       AND (CAST(:uf AS text) IS NULL OR uf = :uf)
       AND (CAST(:municipio AS text) IS NULL OR municipio = :municipio)
-    ORDER BY primary_match DESC, data_abertura ASC NULLS LAST
+    ORDER BY primary_match DESC,
+             capital_social DESC NULLS LAST,
+             data_abertura ASC NULLS LAST
     LIMIT :limit
     """)
 
@@ -49,8 +51,9 @@ async def find_empresas_by_cnae(
 ) -> list[EmpresaCandidate]:
     """Return up to ``limit`` ATIVA empresas matching ``cnae`` in primary or secondary.
 
-    Ordering: primary matches first, then older empresas (data_abertura ASC) as a
-    proxy for stability. Filters: optional UF and município (exact match).
+    Ordering: primary matches first, then ``capital_social DESC`` (larger first =
+    higher-capacity suppliers), then ``data_abertura ASC`` as a tiebreaker
+    (older = more stable). Filters: optional UF and município (exact match).
     """
     result = await db.execute(
         _QUERY,
