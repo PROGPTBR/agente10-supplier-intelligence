@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from agente10.api.clusters import router as clusters_router
 from agente10.api.uploads import router as uploads_router
 from agente10.core.config import get_settings
 from agente10.core.db import dispose_engine, get_engine, init_engine
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agente 10", version="0.1.0", lifespan=lifespan)
 app.include_router(uploads_router)
+app.include_router(clusters_router)
 
 
 async def _db_ping() -> str:
