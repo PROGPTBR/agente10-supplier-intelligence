@@ -38,13 +38,18 @@ SELECT name FROM sqlite_master WHERE type='table'
   AND name IN ('empresa','estabelecimento','municipio');
 """
 
-# Main transform query — JOIN empresa + estabelecimento + municipio (lookup).
+# Main transform query — JOIN empresas + estabelecimento + municipio (lookup).
+# Real rictom-produced schema (verified 2026-05-12):
+#   - table is `empresas` (plural), not `empresa`
+#   - column is `cnae_fiscal` (not cnae_fiscal_principal)
+#   - columns are `ddd1`/`telefone1` (no underscore between letters and digit)
+#   - estabelecimento has a denormalized `cnpj` column (basico+ordem+dv pre-joined)
 _SELECT_SQL = """
 SELECT
-    est.cnpj_basico || est.cnpj_ordem || est.cnpj_dv  AS cnpj,
+    est.cnpj                                          AS cnpj,
     e.razao_social,
     NULLIF(est.nome_fantasia, '')                     AS nome_fantasia,
-    est.cnae_fiscal_principal                         AS cnae_primario,
+    est.cnae_fiscal                                   AS cnae_primario,
     est.cnae_fiscal_secundaria                        AS cnaes_sec_csv,
     est.data_inicio_atividades                        AS data_abertura_str,
     e.porte_empresa                                   AS porte_code,
@@ -58,10 +63,10 @@ SELECT
          coalesce(est.numero,'')          || ' ' ||
          coalesce(est.complemento,'')     || ' - ' ||
          coalesce(est.bairro,''))                     AS endereco,
-    coalesce(est.ddd_1,'') || coalesce(est.telefone_1,'') AS telefone,
+    coalesce(est.ddd1,'') || coalesce(est.telefone1,'') AS telefone,
     NULLIF(est.correio_eletronico, '')                AS email
 FROM estabelecimento est
-JOIN empresa e USING (cnpj_basico)
+JOIN empresas e USING (cnpj_basico)
 LEFT JOIN municipio m ON m.codigo = est.municipio
 WHERE est.situacao_cadastral = '02'
 ORDER BY est.cnpj_basico, est.cnpj_ordem
