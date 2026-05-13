@@ -1,4 +1,4 @@
-.PHONY: help up down logs build test test-backend test-backend-integration test-backend-voyage test-frontend test-integration test-sprint2 lint lint-backend lint-frontend fmt migrate load-cnae ingest-rf load-empresas bootstrap-rf bootstrap-data install-hooks clean
+.PHONY: help up down logs build test test-backend test-backend-integration test-backend-voyage test-frontend test-integration test-sprint2 test-sprint3 lint lint-backend lint-frontend fmt migrate load-cnae ingest-rf load-empresas bootstrap-rf bootstrap-data install-hooks clean
 
 help:
 	@echo "Targets:"
@@ -21,6 +21,7 @@ help:
 	@echo "  bootstrap-rf                migrate + ingest-rf + load-empresas (full setup)"
 	@echo "  bootstrap-data              migrate + load-cnae"
 	@echo "  test-sprint2                run all Sprint 2 integration tests"
+	@echo "  test-sprint3                run all Sprint 3 integration tests"
 	@echo "  install-hooks               install pre-commit hooks"
 
 up:
@@ -83,6 +84,17 @@ test-sprint2:
 			tests/integration/test_pipeline_idempotency.py \
 			tests/integration/test_api_uploads.py \
 			tests/integration/test_pipeline_recall_golden.py \
+			-m "integration"
+
+test-sprint3:
+	docker compose up -d postgres
+	docker compose run --rm \
+		-e INTEGRATION_DATABASE_URL=postgresql+asyncpg://agente10_app:agente10_dev@postgres:5432/agente10 \
+		backend uv run pytest -q \
+			tests/integration/test_api_uploads_list.py \
+			tests/integration/test_api_clusters.py \
+			tests/integration/test_api_cluster_patch.py \
+			tests/integration/test_api_dashboard.py \
 			-m "integration"
 
 lint-backend:
