@@ -1,4 +1,4 @@
-.PHONY: help up down logs build test test-backend test-backend-integration test-backend-voyage test-frontend test-integration lint lint-backend lint-frontend fmt migrate load-cnae ingest-rf load-empresas bootstrap-rf bootstrap-data install-hooks clean
+.PHONY: help up down logs build test test-backend test-backend-integration test-backend-voyage test-frontend test-integration test-sprint2 lint lint-backend lint-frontend fmt migrate load-cnae ingest-rf load-empresas bootstrap-rf bootstrap-data install-hooks clean
 
 help:
 	@echo "Targets:"
@@ -20,6 +20,7 @@ help:
 	@echo "  load-empresas               SQLite (data/cnpj.db) → Postgres empresas (~30-60min)"
 	@echo "  bootstrap-rf                migrate + ingest-rf + load-empresas (full setup)"
 	@echo "  bootstrap-data              migrate + load-cnae"
+	@echo "  test-sprint2                run all Sprint 2 integration tests"
 	@echo "  install-hooks               install pre-commit hooks"
 
 up:
@@ -70,6 +71,19 @@ test-frontend:
 test: test-backend test-frontend
 
 test-integration: test-backend-integration
+
+test-sprint2:
+	docker compose up -d postgres
+	docker compose run --rm \
+		-e INTEGRATION_DATABASE_URL=postgresql+asyncpg://agente10_app:agente10_dev@postgres:5432/agente10 \
+		-e VOYAGE_API_KEY=$$VOYAGE_API_KEY \
+		-e ANTHROPIC_API_KEY=$$ANTHROPIC_API_KEY \
+		backend uv run pytest -q tests/integration/test_pipeline_e2e.py \
+			tests/integration/test_pipeline_isolation.py \
+			tests/integration/test_pipeline_idempotency.py \
+			tests/integration/test_api_uploads.py \
+			tests/integration/test_pipeline_recall_golden.py \
+			-m "integration"
 
 lint-backend:
 	docker compose run --rm backend uv run ruff check src tests
