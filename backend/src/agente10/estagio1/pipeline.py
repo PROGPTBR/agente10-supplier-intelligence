@@ -24,7 +24,7 @@ from agente10.curator.shortlist_reranker import rerank_top10
 from agente10.empresas.discovery import find_empresas_by_cnae
 from agente10.estagio1.classificador_cnae import classify_cluster
 from agente10.estagio1.clusterizador import cluster_rows
-from agente10.estagio1.csv_parser import parse_catalog_bytes
+from agente10.estagio1.csv_parser import ParsedRow, parse_catalog_bytes
 from agente10.estagio3.shortlist_generator import generate_shortlist
 from agente10.integrations.voyage import VoyageClient
 
@@ -114,8 +114,6 @@ async def _cluster_stage(
         {"u": str(upload_id)},
     )
     rows = result.all()
-
-    from agente10.estagio1.csv_parser import ParsedRow
 
     parsed = [
         ParsedRow(descricao_original=r.descricao_original, agrupamento=r.agrupamento) for r in rows
