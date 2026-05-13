@@ -34,9 +34,21 @@ async def generate_shortlist(
         return []
     try:
         ranked = await rerank(cluster_name, candidates)
-        return [ShortlistEntry(cnpj=r.cnpj, rank_estagio3=r.rank) for r in ranked[:SHORTLIST_SIZE]]
+        seen: set[str] = set()
+        deduped: list[RankedSupplier] = []
+        for r in ranked:
+            if r.cnpj not in seen:
+                seen.add(r.cnpj)
+                deduped.append(r)
+        return [ShortlistEntry(cnpj=r.cnpj, rank_estagio3=r.rank) for r in deduped[:SHORTLIST_SIZE]]
     except Exception:
+        seen_fallback: set[str] = set()
+        deduped_fallback: list[EmpresaCandidate] = []
+        for c in candidates:
+            if c.cnpj not in seen_fallback:
+                seen_fallback.add(c.cnpj)
+                deduped_fallback.append(c)
         return [
             ShortlistEntry(cnpj=c.cnpj, rank_estagio3=i + 1)
-            for i, c in enumerate(candidates[:SHORTLIST_SIZE])
+            for i, c in enumerate(deduped_fallback[:SHORTLIST_SIZE])
         ]

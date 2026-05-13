@@ -7,5 +7,5 @@ Frigorifico carne bovina,carne,1011201,02916265000160
 Cosmeticos atacado,cosmeticos,4646001,71673990000177
 Fabricacao aviao,aerospacial,3041500,07689002000189
 Bolsa de valores,financeiro,6611803,09346601000125
-Banco comercial DF,banco,6422100,00000000000191
-Banco multiplo,banco,6421200,60701190000104
+Banco comercial DF,banco-comercial,6422100,00000000000191
+Banco multiplo,banco-multiplo,6421200,60701190000104
