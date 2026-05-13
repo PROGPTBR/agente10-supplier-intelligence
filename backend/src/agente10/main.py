@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 import redis.asyncio as redis_asyncio
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -30,6 +31,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Agente 10", version="0.1.0", lifespan=lifespan)
+
+# CORS for dev (Next.js on :3000). Sprint 4 should restrict to deployed origin.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=False,
+)
+
 app.include_router(uploads_router)
 app.include_router(clusters_router)
 app.include_router(dashboard_router)
