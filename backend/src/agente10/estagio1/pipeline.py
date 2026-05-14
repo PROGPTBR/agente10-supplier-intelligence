@@ -279,6 +279,127 @@ async def _cnae_stage(
                 )
 
 
+def _cosine(a: list[float], b: list[float]) -> float:
+    """Pure-Python cosine similarity for short embedding lists."""
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+# Threshold tuned from the pilot examples ("Cabos e condutores elétricos isolados"
+# duplicate, "Estruturas sanitárias temporárias" vs "...temporárias aluguel",
+# "Relés auxiliares" vs "Relés de supervisão e proteção") — 0.85 catches all
+# while keeping unrelated subclasses with the same CNAE distinct.
+_CONSOLIDATE_THRESHOLD = 0.85
+
+
+async def _consolidate_stage(
+    session_factory: async_sessionmaker[AsyncSession],
+    tenant_id: UUID,
+    upload_id: UUID,
+    voyage: VoyageClient,
+) -> None:
+    """Merge clusters with the same primary CNAE and near-identical refined names.
+
+    After cnae_stage assigns CNAE and a broader refined name to each cluster,
+    HDBSCAN's fine-grained splits often produce 2-3 clusters that mean the
+    same thing ("cabo" vs "cabo alimentação" both ending up as "Cabos e
+    condutores elétricos isolados"). We embed the refined names per CNAE
+    group and greedily merge pairs above a similarity threshold, keeping the
+    cluster with most linhas as survivor.
+    """
+    async with session_factory() as s0, s0.begin():
+        async with tenant_context(s0, tenant_id):
+            rows = (
+                await s0.execute(
+                    text(
+                        "SELECT id, nome_cluster, "
+                        "COALESCE(nome_cluster_refinado, nome_cluster) AS nome, "
+                        "cnae, cnaes_secundarios, num_linhas "
+                        "FROM spend_clusters "
+                        "WHERE upload_id = :u AND cnae IS NOT NULL "
+                        "ORDER BY cnae, num_linhas DESC"
+                    ),
+                    {"u": str(upload_id)},
+                )
+            ).all()
+
+    # Group by primary CNAE
+    by_cnae: dict[str, list] = {}
+    for r in rows:
+        by_cnae.setdefault(r.cnae, []).append(r)
+
+    total_merges = 0
+    for cnae, clusters in by_cnae.items():
+        if len(clusters) < 2:
+            continue
+        names = [c.nome for c in clusters]
+        try:
+            embeddings = await voyage.embed_documents(names)
+        except Exception:
+            log.exception("consolidate: voyage embed failed for cnae=%s", cnae)
+            continue
+
+        # Greedy merge: bigger clusters absorb smaller ones above threshold.
+        # `clusters` is already sorted by num_linhas DESC inside the CNAE group.
+        merged_into: dict[str, str] = {}  # merged_cluster_id -> survivor_id
+        survivor_ext_cnaes: dict[str, set[str]] = {
+            str(c.id): set(c.cnaes_secundarios or []) for c in clusters
+        }
+
+        for i in range(len(clusters)):
+            i_id = str(clusters[i].id)
+            if i_id in merged_into:
+                continue
+            for j in range(i + 1, len(clusters)):
+                j_id = str(clusters[j].id)
+                if j_id in merged_into:
+                    continue
+                if _cosine(embeddings[i], embeddings[j]) >= _CONSOLIDATE_THRESHOLD:
+                    merged_into[j_id] = i_id
+                    survivor_ext_cnaes[i_id] |= survivor_ext_cnaes.pop(j_id, set())
+                    # Drop the survivor's own CNAE from secondaries if present
+                    survivor_ext_cnaes[i_id].discard(cnae)
+
+        if not merged_into:
+            continue
+        total_merges += len(merged_into)
+
+        async with session_factory() as session, session.begin():
+            async with tenant_context(session, tenant_id):
+                for merged_id, survivor_id in merged_into.items():
+                    await session.execute(
+                        text(
+                            "UPDATE spend_linhas SET cluster_id = :surv "
+                            "WHERE cluster_id = :merged"
+                        ),
+                        {"surv": survivor_id, "merged": merged_id},
+                    )
+                    await session.execute(
+                        text("DELETE FROM spend_clusters WHERE id = :i"),
+                        {"i": merged_id},
+                    )
+                # Update each survivor's secondaries (union) + num_linhas
+                for survivor_id, ext in survivor_ext_cnaes.items():
+                    if survivor_id in merged_into:
+                        continue  # this was itself absorbed
+                    await session.execute(
+                        text(
+                            "UPDATE spend_clusters SET "
+                            "cnaes_secundarios = :sec, "
+                            "num_linhas = (SELECT COUNT(*) FROM spend_linhas "
+                            "              WHERE cluster_id = :i), "
+                            "shortlist_gerada = false "
+                            "WHERE id = :i"
+                        ),
+                        {"sec": sorted(ext), "i": survivor_id},
+                    )
+
+    if total_merges:
+        log.info("consolidate stage: merged %d clusters for upload=%s", total_merges, upload_id)
+
+
 async def _shortlist_stage(
     session_factory: async_sessionmaker[AsyncSession],
     tenant_id: UUID,
@@ -385,6 +506,9 @@ async def processar_upload(
 
         log.info("pipeline upload=%s stage=cnae starting", upload_id)
         await _cnae_stage(session_factory, tenant_id, upload_id, voyage, curator)
+
+        log.info("pipeline upload=%s stage=consolidate starting", upload_id)
+        await _consolidate_stage(session_factory, tenant_id, upload_id, voyage)
 
         log.info("pipeline upload=%s stage=shortlist starting", upload_id)
         await _shortlist_stage(session_factory, tenant_id, upload_id, curator)
