@@ -106,17 +106,15 @@ export default function UploadsListPage() {
                 </td>
                 <td className="border-b border-zinc-100 py-3 text-right">
                   <div className="flex justify-end gap-2">
-                    {(u.status === "failed" || u.status === "processing") && (
-                      <button
-                        type="button"
-                        onClick={() => onRetry(u.upload_id)}
-                        disabled={retry.isPending}
-                        className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                        title="Reprocessar upload"
-                      >
-                        Retry
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => onRetry(u.upload_id)}
+                      disabled={retry.isPending}
+                      className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                      title="Reprocessar upload (reaplica consolidação/shortlist)"
+                    >
+                      Retry
+                    </button>
                     <button
                       type="button"
                       onClick={() => onDelete(u.upload_id, u.nome_arquivo)}
