@@ -195,6 +195,20 @@ async def _cnae_stage(
                         "i": str(c.id),
                     },
                 )
+                # Live progress: update linhas_classificadas to the running
+                # count of linhas whose cluster now has a CNAE. The frontend
+                # polls this every 2s and renders the progress bar.
+                # _denorm_stage will re-compute this at the end (idempotent).
+                await session.execute(
+                    text("""
+                        UPDATE spend_uploads SET linhas_classificadas = COALESCE((
+                            SELECT SUM(sc.num_linhas) FROM spend_clusters sc
+                            WHERE sc.upload_id = :u AND sc.cnae IS NOT NULL
+                        ), 0)
+                        WHERE id = :u
+                    """),
+                    {"u": str(upload_id)},
+                )
                 # Cache upsert (with embedding for future few-shot search) is
                 # done inside classify_cluster; manual_pending entries are not
                 # cached there either, so the cache only ever holds confident
