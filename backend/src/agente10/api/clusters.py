@@ -177,16 +177,27 @@ async def get_cluster_shortlist(
                 raise HTTPException(404, "cluster not found")
             if not cnae_row.cnae:
                 return []
+            # DISTINCT ON dedupes (cnae, cnpj) collisions when multiple clusters
+            # share the same CNAE (each cluster's _shortlist_stage inserts its
+            # own top-10 without UPSERT). Sprint 4: add UNIQUE constraint on
+            # supplier_shortlists(tenant_id, cnae, cnpj_fornecedor).
             rows = (
                 await session.execute(
                     text("""
-                        SELECT s.cnpj_fornecedor AS cnpj, s.rank_estagio3,
+                        WITH deduped AS (
+                            SELECT DISTINCT ON (s.cnpj_fornecedor)
+                                s.cnpj_fornecedor AS cnpj,
+                                s.rank_estagio3
+                            FROM supplier_shortlists s
+                            WHERE s.cnae = :c AND s.tenant_id = :t
+                            ORDER BY s.cnpj_fornecedor, s.rank_estagio3
+                        )
+                        SELECT d.cnpj, d.rank_estagio3,
                                e.razao_social, e.nome_fantasia, e.capital_social,
                                e.uf, e.municipio, e.data_abertura
-                        FROM supplier_shortlists s
-                        JOIN empresas e ON e.cnpj = s.cnpj_fornecedor
-                        WHERE s.cnae = :c AND s.tenant_id = :t
-                        ORDER BY s.rank_estagio3
+                        FROM deduped d
+                        JOIN empresas e ON e.cnpj = d.cnpj
+                        ORDER BY d.rank_estagio3
                         LIMIT 10
                         """),
                     {"c": cnae_row.cnae, "t": str(tenant_id)},

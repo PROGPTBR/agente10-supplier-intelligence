@@ -22,7 +22,9 @@ export default function UploadsListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Uploads</h1>
-        <Button render={<Link href="/uploads/new" />}>Novo upload</Button>
+        <Button nativeButton={false} render={<Link href="/uploads/new" />}>
+          Novo upload
+        </Button>
       </div>
       {data.length === 0 ? (
         <p className="text-sm text-zinc-500">
