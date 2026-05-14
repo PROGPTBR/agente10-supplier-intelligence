@@ -85,6 +85,7 @@ export function useFiliaisQuery(clusterId: string, cnpjBasico: string | null) {
 
 export interface ClusterPatchBody {
   cnae?: string;
+  cnaes_secundarios?: string[];
   notas_revisor?: string;
   revisado_humano?: boolean;
 }

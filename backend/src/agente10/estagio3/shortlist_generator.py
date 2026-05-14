@@ -83,7 +83,8 @@ async def regenerate_shortlist_for_cluster(
             cluster = (
                 await session.execute(
                     text(
-                        "SELECT c.id, c.cnae, c.nome_cluster, u.metadados "
+                        "SELECT c.id, c.cnae, c.cnaes_secundarios, c.nome_cluster, "
+                        "u.metadados "
                         "FROM spend_clusters c "
                         "JOIN spend_uploads u ON u.id = c.upload_id "
                         "WHERE c.id = :i"
@@ -95,39 +96,41 @@ async def regenerate_shortlist_for_cluster(
                 return
             cfg = parse_from_metadados(cluster.metadados)
             pool_size = max(cfg.size * 3, RETRIEVAL_POOL)
-            await session.execute(
-                text("DELETE FROM supplier_shortlists WHERE cnae = :c AND tenant_id = :t"),
-                {"c": cluster.cnae, "t": str(tenant_id)},
-            )
-            entries = await generate_shortlist(
-                cluster.nome_cluster,
-                cluster.cnae,
-                discovery=lambda cnae: find_empresas_by_cnae(
-                    session,
-                    cnae,
-                    uf=cfg.uf,
-                    municipio=cfg.municipio,
-                    only_matriz=cfg.only_matriz,
-                    min_capital=cfg.min_capital,
-                    limit=pool_size,
-                ),
-                rerank=partial(rerank_top10, curator),
-                size=cfg.size,
-            )
-            for entry in entries:
+            cnaes_alvo = [cluster.cnae] + list(cluster.cnaes_secundarios or [])
+            for cnae_target in cnaes_alvo:
                 await session.execute(
-                    text(
-                        "INSERT INTO supplier_shortlists "
-                        "(tenant_id, cnae, cnpj_fornecedor, rank_estagio3) "
-                        "VALUES (:t, :c, :cnpj, :r)"
-                    ),
-                    {
-                        "t": str(tenant_id),
-                        "c": cluster.cnae,
-                        "cnpj": entry.cnpj,
-                        "r": entry.rank_estagio3,
-                    },
+                    text("DELETE FROM supplier_shortlists " "WHERE cnae = :c AND tenant_id = :t"),
+                    {"c": cnae_target, "t": str(tenant_id)},
                 )
+                entries = await generate_shortlist(
+                    cluster.nome_cluster,
+                    cnae_target,
+                    discovery=lambda cnae: find_empresas_by_cnae(
+                        session,
+                        cnae,
+                        uf=cfg.uf,
+                        municipio=cfg.municipio,
+                        only_matriz=cfg.only_matriz,
+                        min_capital=cfg.min_capital,
+                        limit=pool_size,
+                    ),
+                    rerank=partial(rerank_top10, curator),
+                    size=cfg.size,
+                )
+                for entry in entries:
+                    await session.execute(
+                        text(
+                            "INSERT INTO supplier_shortlists "
+                            "(tenant_id, cnae, cnpj_fornecedor, rank_estagio3) "
+                            "VALUES (:t, :c, :cnpj, :r)"
+                        ),
+                        {
+                            "t": str(tenant_id),
+                            "c": cnae_target,
+                            "cnpj": entry.cnpj,
+                            "r": entry.rank_estagio3,
+                        },
+                    )
             await session.execute(
                 text("UPDATE spend_clusters SET shortlist_gerada = true WHERE id = :i"),
                 {"i": str(cluster_id)},

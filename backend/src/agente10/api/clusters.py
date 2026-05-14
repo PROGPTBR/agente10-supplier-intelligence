@@ -92,6 +92,7 @@ class FilialView(BaseModel):
 
 class ClusterPatch(BaseModel):
     cnae: str | None = None
+    cnaes_secundarios: list[str] | None = None
     notas_revisor: str | None = None
     revisado_humano: bool | None = None
     handoff_rfx: bool | None = None
@@ -405,8 +406,8 @@ async def patch_cluster(
             current = (
                 await session.execute(
                     text(
-                        "SELECT nome_cluster, cnae, cnae_metodo FROM spend_clusters "
-                        "WHERE id = :i"
+                        "SELECT nome_cluster, cnae, cnae_metodo, cnaes_secundarios "
+                        "FROM spend_clusters WHERE id = :i"
                     ),
                     {"i": str(cluster_id)},
                 )
@@ -414,16 +415,30 @@ async def patch_cluster(
             if not current:
                 raise HTTPException(404, "cluster not found")
             cnae_changed = body.cnae is not None and body.cnae != current.cnae
+            current_sec = sorted(set(current.cnaes_secundarios or []))
+            new_sec = (
+                sorted(set(body.cnaes_secundarios))
+                if body.cnaes_secundarios is not None
+                else current_sec
+            )
+            secundarios_changed = body.cnaes_secundarios is not None and new_sec != current_sec
 
+            codes_to_validate: set[str] = set()
             if cnae_changed:
+                codes_to_validate.add(body.cnae)  # type: ignore[arg-type]
+            if secundarios_changed:
+                codes_to_validate.update(new_sec)
+            for code in codes_to_validate:
                 taxonomy_hit = (
                     await session.execute(
                         text("SELECT denominacao FROM cnae_taxonomy WHERE codigo = :c"),
-                        {"c": body.cnae},
+                        {"c": code},
                     )
                 ).first()
                 if not taxonomy_hit:
-                    raise HTTPException(422, f"cnae '{body.cnae}' not found in cnae_taxonomy")
+                    raise HTTPException(422, f"cnae '{code}' not found in cnae_taxonomy")
+
+            if cnae_changed:
                 # Audit trail BEFORE the UPDATE — preserves the human-correction signal
                 # as future training data even if the cluster gets reclassified later.
                 await session.execute(
@@ -450,13 +465,16 @@ async def patch_cluster(
                 updates.append("cnae = :cnae")
                 params["cnae"] = body.cnae
                 updates.append("cnae_metodo = 'revisado_humano'")
+            if secundarios_changed:
+                updates.append("cnaes_secundarios = :sec")
+                params["sec"] = new_sec
             if body.notas_revisor is not None:
                 updates.append("notas_revisor = :n")
                 params["n"] = body.notas_revisor
             if body.revisado_humano is not None:
                 updates.append("revisado_humano = :r")
                 params["r"] = body.revisado_humano
-            if cnae_changed:
+            if cnae_changed or secundarios_changed:
                 updates.append("shortlist_gerada = false")
             if updates:
                 await session.execute(
@@ -475,7 +493,7 @@ async def patch_cluster(
                     metodo="revisado_humano",
                 )
 
-    if cnae_changed:
+    if cnae_changed or secundarios_changed:
         pool = get_pool()
         await pool.enqueue_job(
             "run_regenerate_shortlist",
