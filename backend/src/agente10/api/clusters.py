@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import io
 from datetime import date as date_t
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -14,6 +19,8 @@ from agente10.cache import classification_cache as cache
 from agente10.core.db import get_session_factory
 from agente10.core.tenancy import tenant_context
 from agente10.worker.client import get_pool
+
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 router = APIRouter(prefix="/api/v1", tags=["clusters"])
 
@@ -456,3 +463,196 @@ async def patch_cluster(
         )
 
     return await get_cluster(cluster_id, tenant_id=tenant_id)
+
+
+_EXPORT_COLUMNS = [
+    "Cluster",
+    "CNAE",
+    "CNAE descrição",
+    "Rank",
+    "Razão social",
+    "Nome fantasia",
+    "CNPJ (matriz)",
+    "Filiais",
+    "Capital social (BRL)",
+    "UF",
+    "Município",
+    "Data abertura",
+]
+
+
+def _shortlist_query(*, single_cluster: bool) -> str:
+    """Top-10 shortlist rows per cluster joined with empresas.
+
+    `single_cluster=True` adds a cluster-id filter; otherwise filters by upload.
+    """
+    where = "c.id = :cluster_id" if single_cluster else "c.upload_id = :upload_id"
+    return f"""
+        WITH target_clusters AS (
+            SELECT c.id, c.nome_cluster, c.nome_cluster_refinado, c.cnae,
+                   ARRAY[c.cnae] || COALESCE(c.cnaes_secundarios, ARRAY[]::varchar[]) AS cnaes_alvo
+            FROM spend_clusters c
+            WHERE {where} AND c.cnae IS NOT NULL
+        ),
+        base AS (
+            SELECT DISTINCT ON (tc.id, s.cnpj_fornecedor)
+                tc.id AS cluster_id,
+                COALESCE(tc.nome_cluster_refinado, tc.nome_cluster) AS cluster_label,
+                tc.cnae AS cluster_cnae,
+                s.cnpj_fornecedor AS cnpj,
+                s.rank_estagio3
+            FROM target_clusters tc
+            JOIN supplier_shortlists s
+              ON s.cnae = ANY(tc.cnaes_alvo) AND s.tenant_id = :tenant_id
+            ORDER BY tc.id, s.cnpj_fornecedor, s.rank_estagio3
+        ),
+        per_company AS (
+            SELECT DISTINCT ON (b.cluster_id, substring(e.cnpj, 1, 8))
+                b.cluster_id, b.cluster_label, b.cluster_cnae,
+                substring(e.cnpj, 1, 8) AS cnpj_basico,
+                e.cnpj, e.razao_social, e.nome_fantasia,
+                e.capital_social, e.uf, e.municipio, e.data_abertura,
+                b.rank_estagio3
+            FROM base b
+            JOIN empresas e ON substring(e.cnpj, 1, 8) = substring(b.cnpj, 1, 8)
+            ORDER BY b.cluster_id, substring(e.cnpj, 1, 8),
+                     CASE WHEN substring(e.cnpj, 9, 4) = '0001' THEN 0 ELSE 1 END,
+                     e.capital_social DESC NULLS LAST,
+                     e.data_abertura ASC NULLS LAST
+        )
+        SELECT pc.*, ct.denominacao AS cnae_descricao,
+               (SELECT COUNT(*) FROM empresas e2
+                WHERE substring(e2.cnpj, 1, 8) = pc.cnpj_basico) AS filiais_count,
+               ROW_NUMBER() OVER (
+                   PARTITION BY pc.cluster_id ORDER BY pc.rank_estagio3
+               ) AS rank
+        FROM per_company pc
+        LEFT JOIN cnae_taxonomy ct ON ct.codigo = pc.cluster_cnae
+        ORDER BY pc.cluster_label, rank
+    """
+
+
+def _build_xlsx(rows: list[dict[str, object]], sheet_title: str) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_title[:31] or "Shortlist"
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="1F2937")
+    for col_idx, name in enumerate(_EXPORT_COLUMNS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=name)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="left")
+    for r_idx, row in enumerate(rows, start=2):
+        ws.cell(row=r_idx, column=1, value=row["cluster_label"])
+        ws.cell(row=r_idx, column=2, value=row["cluster_cnae"])
+        ws.cell(row=r_idx, column=3, value=row["cnae_descricao"])
+        ws.cell(row=r_idx, column=4, value=row["rank"])
+        ws.cell(row=r_idx, column=5, value=row["razao_social"])
+        ws.cell(row=r_idx, column=6, value=row["nome_fantasia"])
+        ws.cell(row=r_idx, column=7, value=row["cnpj"])
+        ws.cell(row=r_idx, column=8, value=row["filiais_count"])
+        ws.cell(row=r_idx, column=9, value=row["capital_social"])
+        ws.cell(row=r_idx, column=10, value=row["uf"])
+        ws.cell(row=r_idx, column=11, value=row["municipio"])
+        ws.cell(row=r_idx, column=12, value=row["data_abertura"])
+    widths = [38, 10, 50, 6, 50, 50, 18, 8, 18, 5, 24, 12]
+    for col_idx, w in enumerate(widths, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = w
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def _rows_to_dicts(rows) -> list[dict[str, object]]:
+    return [
+        {
+            "cluster_label": r.cluster_label,
+            "cluster_cnae": r.cluster_cnae,
+            "cnae_descricao": r.cnae_descricao,
+            "rank": int(r.rank),
+            "razao_social": r.razao_social,
+            "nome_fantasia": r.nome_fantasia,
+            "cnpj": r.cnpj,
+            "filiais_count": int(r.filiais_count),
+            "capital_social": (float(r.capital_social) if r.capital_social is not None else None),
+            "uf": r.uf,
+            "municipio": r.municipio,
+            "data_abertura": r.data_abertura,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/uploads/{upload_id}/shortlist.xlsx")
+async def export_upload_shortlist(
+    upload_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> StreamingResponse:
+    """Single XLSX with the top-10 shortlist of every classified cluster in an upload."""
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            meta = (
+                await session.execute(
+                    text("SELECT nome_arquivo FROM spend_uploads WHERE id = :u"),
+                    {"u": str(upload_id)},
+                )
+            ).first()
+            if not meta:
+                raise HTTPException(404, "upload not found")
+            rows = (
+                await session.execute(
+                    text(_shortlist_query(single_cluster=False)),
+                    {"upload_id": str(upload_id), "tenant_id": str(tenant_id)},
+                )
+            ).all()
+    xlsx_bytes = _build_xlsx(_rows_to_dicts(rows), sheet_title="Shortlist")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in meta.nome_arquivo)[:40]
+    filename = f"shortlist-{safe_name}-{stamp}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(xlsx_bytes),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/clusters/{cluster_id}/shortlist.xlsx")
+async def export_cluster_shortlist(
+    cluster_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> StreamingResponse:
+    """XLSX with the shortlist of a single cluster."""
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            meta = (
+                await session.execute(
+                    text(
+                        "SELECT COALESCE(nome_cluster_refinado, nome_cluster) AS label "
+                        "FROM spend_clusters WHERE id = :i"
+                    ),
+                    {"i": str(cluster_id)},
+                )
+            ).first()
+            if not meta:
+                raise HTTPException(404, "cluster not found")
+            rows = (
+                await session.execute(
+                    text(_shortlist_query(single_cluster=True)),
+                    {"cluster_id": str(cluster_id), "tenant_id": str(tenant_id)},
+                )
+            ).all()
+    xlsx_bytes = _build_xlsx(_rows_to_dicts(rows), sheet_title=meta.label)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in meta.label)[:40]
+    filename = f"shortlist-{safe_name}-{stamp}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(xlsx_bytes),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

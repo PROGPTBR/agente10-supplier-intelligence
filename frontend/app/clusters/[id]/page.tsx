@@ -6,6 +6,7 @@ import {
   useClusterDetailQuery,
   useShortlistQuery,
 } from "../../../lib/api/clusters";
+import { apiDownload } from "../../../lib/api/client";
 import { ClusterReviewForm } from "../../../components/cluster/ClusterReviewForm";
 import { ShortlistTable } from "../../../components/shortlist/ShortlistTable";
 import {
@@ -24,6 +25,7 @@ export default function ClusterDetailPage({
     uf: "",
     municipio: "",
   });
+  const [exporting, setExporting] = useState(false);
   const shortlist = useShortlistQuery(id, cluster.data?.shortlist_gerada, {
     uf: filters.uf || undefined,
     municipio: filters.municipio || undefined,
@@ -53,7 +55,28 @@ export default function ClusterDetailPage({
               ? " (filtrado)"
               : " (top 10 por capital)"}
           </h2>
-          <ShortlistFilters value={filters} onChange={setFilters} />
+          <div className="flex items-end gap-3">
+            <ShortlistFilters value={filters} onChange={setFilters} />
+            <button
+              type="button"
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await apiDownload(
+                    `/api/v1/clusters/${id}/shortlist.xlsx`,
+                    "shortlist.xlsx",
+                  );
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              disabled={exporting || cluster.data.shortlist_gerada === false}
+              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              title="Baixa a shortlist deste cluster em XLSX"
+            >
+              {exporting ? "Exportando…" : "Exportar XLSX"}
+            </button>
+          </div>
         </div>
         {cluster.data.shortlist_gerada === false && (
           <p className="text-xs text-amber-700">Regenerando shortlist…</p>

@@ -3,6 +3,7 @@
 
 import { use, useState } from "react";
 import { useClustersQuery } from "../../../lib/api/clusters";
+import { apiDownload } from "../../../lib/api/client";
 import {
   useRetryUploadMutation,
   useUploadStatusQuery,
@@ -22,6 +23,7 @@ export default function UploadDetailPage({
   const { id } = use(params);
   const upload = useUploadStatusQuery(id);
   const retry = useRetryUploadMutation();
+  const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState<ClusterFilterState>({ search: "" });
   // Show clusters as soon as classification is complete (linhas_classificadas
   // reached linhas_total). Shortlist stage may still be running in background
@@ -46,15 +48,36 @@ export default function UploadDetailPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Upload</h1>
-        <button
-          type="button"
-          onClick={() => retry.mutate(id)}
-          disabled={retry.isPending || upload.data.status === "pending"}
-          className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-          title="Reprocessa o upload (reaplica consolidação e shortlist)"
-        >
-          {retry.isPending ? "Reenviando…" : "Reprocessar"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              setExporting(true);
+              try {
+                await apiDownload(
+                  `/api/v1/uploads/${id}/shortlist.xlsx`,
+                  "shortlist.xlsx",
+                );
+              } finally {
+                setExporting(false);
+              }
+            }}
+            disabled={exporting || !classificationDone}
+            className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            title="Baixa a shortlist consolidada de todos os clusters em XLSX"
+          >
+            {exporting ? "Exportando…" : "Exportar XLSX"}
+          </button>
+          <button
+            type="button"
+            onClick={() => retry.mutate(id)}
+            disabled={retry.isPending || upload.data.status === "pending"}
+            className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            title="Reprocessa o upload (reaplica consolidação e shortlist)"
+          >
+            {retry.isPending ? "Reenviando…" : "Reprocessar"}
+          </button>
+        </div>
       </div>
       <UploadProgressBar
         status={upload.data.status}
