@@ -7,6 +7,7 @@ import { ClusterDetail, ClusterSummary, ShortlistEntry } from "../types";
 export function useClustersQuery(
   uploadId: string,
   filters: { metodo?: string; revisado?: boolean } = {},
+  options: { enabled?: boolean } = {},
 ) {
   const params = new URLSearchParams();
   if (filters.metodo) params.set("metodo", filters.metodo);
@@ -23,7 +24,7 @@ export function useClustersQuery(
             `/api/v1/uploads/${uploadId}/clusters${query ? `?${query}` : ""}`,
           ),
         ),
-    enabled: !!uploadId,
+    enabled: !!uploadId && (options.enabled ?? true),
   });
 }
 

@@ -19,18 +19,18 @@ export default function UploadDetailPage({
   const { id } = use(params);
   const upload = useUploadStatusQuery(id);
   const [filters, setFilters] = useState<ClusterFilterState>({ search: "" });
-  const clusters = useClustersQuery(id, {
-    metodo: filters.metodo,
-    revisado: filters.revisado,
-  });
+  const done = upload.data?.status === "done";
+  const clusters = useClustersQuery(
+    id,
+    { metodo: filters.metodo, revisado: filters.revisado },
+    { enabled: done },
+  );
 
   if (upload.isLoading)
     return <p className="text-sm text-zinc-500">Carregando…</p>;
   if (upload.error || !upload.data) {
     return <p className="text-sm text-red-600">Upload não encontrado.</p>;
   }
-
-  const done = upload.data.status === "done";
 
   return (
     <div className="space-y-6">
