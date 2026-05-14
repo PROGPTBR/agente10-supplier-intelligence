@@ -184,44 +184,51 @@ async def _cnae_stage(
 
 
 async def _shortlist_stage(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
     tenant_id: UUID,
     upload_id: UUID,
     curator: CuratorClient,
 ) -> None:
-    result = await session.execute(
-        text(
-            "SELECT id, nome_cluster, cnae FROM spend_clusters "
-            "WHERE upload_id = :u AND cnae IS NOT NULL AND shortlist_gerada = false"
-        ),
-        {"u": str(upload_id)},
-    )
-    clusters = result.all()
-    for c in clusters:
-        entries = await generate_shortlist(
-            c.nome_cluster,
-            c.cnae,
-            discovery=lambda cnae: find_empresas_by_cnae(session, cnae, limit=25),
-            rerank=partial(rerank_top10, curator),
-        )
-        for entry in entries:
-            await session.execute(
+    # Per-cluster transactions: rerank_top10 hits Anthropic (~1-3s/cluster);
+    # holding one transaction for 163 clusters drops Railway's proxy connection.
+    async with session_factory() as s0, s0.begin():
+        async with tenant_context(s0, tenant_id):
+            result = await s0.execute(
                 text(
-                    "INSERT INTO supplier_shortlists "
-                    "(tenant_id, cnae, cnpj_fornecedor, rank_estagio3) "
-                    "VALUES (:t, :cnae, :cnpj, :r)"
+                    "SELECT id, nome_cluster, cnae FROM spend_clusters "
+                    "WHERE upload_id = :u AND cnae IS NOT NULL AND shortlist_gerada = false"
                 ),
-                {
-                    "t": str(tenant_id),
-                    "cnae": c.cnae,
-                    "cnpj": entry.cnpj,
-                    "r": entry.rank_estagio3,
-                },
+                {"u": str(upload_id)},
             )
-        await session.execute(
-            text("UPDATE spend_clusters SET shortlist_gerada = true WHERE id = :i"),
-            {"i": str(c.id)},
-        )
+            clusters = result.all()
+
+    for c in clusters:
+        async with session_factory() as session, session.begin():
+            async with tenant_context(session, tenant_id):
+                entries = await generate_shortlist(
+                    c.nome_cluster,
+                    c.cnae,
+                    discovery=lambda cnae: find_empresas_by_cnae(session, cnae, limit=25),
+                    rerank=partial(rerank_top10, curator),
+                )
+                for entry in entries:
+                    await session.execute(
+                        text(
+                            "INSERT INTO supplier_shortlists "
+                            "(tenant_id, cnae, cnpj_fornecedor, rank_estagio3) "
+                            "VALUES (:t, :cnae, :cnpj, :r)"
+                        ),
+                        {
+                            "t": str(tenant_id),
+                            "cnae": c.cnae,
+                            "cnpj": entry.cnpj,
+                            "r": entry.rank_estagio3,
+                        },
+                    )
+                await session.execute(
+                    text("UPDATE spend_clusters SET shortlist_gerada = true WHERE id = :i"),
+                    {"i": str(c.id)},
+                )
 
 
 async def _denorm_stage(session: AsyncSession, upload_id: UUID) -> None:
@@ -255,23 +262,31 @@ async def processar_upload(
     curator: CuratorClient,
 ) -> None:
     """Run the full Estágio 1 + Estágio 3 pipeline for one upload."""
-    stages = [
+    # shortlist_stage manages its own per-cluster sessions (Anthropic calls
+    # are too slow for one big transaction over Railway's proxy).
+    session_stages = [
         ("parse", _parse_stage, (upload_id, tenant_id, csv_path)),
         ("cluster", _cluster_stage, (upload_id, tenant_id, voyage)),
         ("cnae", _cnae_stage, (upload_id, voyage, curator)),
-        ("shortlist", _shortlist_stage, (tenant_id, upload_id, curator)),
-        ("denorm", _denorm_stage, (upload_id,)),
     ]
     async with session_factory() as session, session.begin():
         async with tenant_context(session, tenant_id):
             await _set_status(session, upload_id, "processing")
 
     try:
-        for name, fn, args in stages:
+        for name, fn, args in session_stages:
             log.info("pipeline upload=%s stage=%s starting", upload_id, name)
             async with session_factory() as session, session.begin():
                 async with tenant_context(session, tenant_id):
                     await fn(session, *args)
+
+        log.info("pipeline upload=%s stage=shortlist starting", upload_id)
+        await _shortlist_stage(session_factory, tenant_id, upload_id, curator)
+
+        log.info("pipeline upload=%s stage=denorm starting", upload_id)
+        async with session_factory() as session, session.begin():
+            async with tenant_context(session, tenant_id):
+                await _denorm_stage(session, upload_id)
 
         async with session_factory() as session, session.begin():
             async with tenant_context(session, tenant_id):
