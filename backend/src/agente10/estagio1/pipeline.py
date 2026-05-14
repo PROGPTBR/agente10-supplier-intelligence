@@ -150,37 +150,46 @@ async def _cluster_stage(
 
 
 async def _cnae_stage(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    tenant_id: UUID,
     upload_id: UUID,
     voyage: VoyageClient,
     curator: CuratorClient,
 ) -> None:
-    result = await session.execute(
-        text(
-            "SELECT id, nome_cluster FROM spend_clusters " "WHERE upload_id = :u AND cnae IS NULL"
-        ),
-        {"u": str(upload_id)},
-    )
-    clusters = result.all()
+    # Per-cluster transactions: classify_cluster runs Voyage embed + (optionally)
+    # Anthropic curator. Same long-tx risk as shortlist_stage over Railway proxy.
+    async with session_factory() as s0, s0.begin():
+        async with tenant_context(s0, tenant_id):
+            result = await s0.execute(
+                text(
+                    "SELECT id, nome_cluster FROM spend_clusters "
+                    "WHERE upload_id = :u AND cnae IS NULL"
+                ),
+                {"u": str(upload_id)},
+            )
+            clusters = result.all()
+
     for c in clusters:
-        outcome = await classify_cluster(
-            c.nome_cluster,
-            voyage=voyage,
-            retrieval=lambda emb: top_k_cnaes(session, emb, k=5),
-            curator_pick=partial(pick_cnae, curator),
-        )
-        await session.execute(
-            text(
-                "UPDATE spend_clusters SET cnae=:cnae, cnae_confianca=:c, cnae_metodo=:m "
-                "WHERE id=:i"
-            ),
-            {
-                "cnae": outcome.cnae,
-                "c": outcome.cnae_confianca,
-                "m": outcome.cnae_metodo,
-                "i": str(c.id),
-            },
-        )
+        async with session_factory() as session, session.begin():
+            async with tenant_context(session, tenant_id):
+                outcome = await classify_cluster(
+                    c.nome_cluster,
+                    voyage=voyage,
+                    retrieval=lambda emb: top_k_cnaes(session, emb, k=5),
+                    curator_pick=partial(pick_cnae, curator),
+                )
+                await session.execute(
+                    text(
+                        "UPDATE spend_clusters SET cnae=:cnae, cnae_confianca=:c, cnae_metodo=:m "
+                        "WHERE id=:i"
+                    ),
+                    {
+                        "cnae": outcome.cnae,
+                        "c": outcome.cnae_confianca,
+                        "m": outcome.cnae_metodo,
+                        "i": str(c.id),
+                    },
+                )
 
 
 async def _shortlist_stage(
@@ -262,12 +271,12 @@ async def processar_upload(
     curator: CuratorClient,
 ) -> None:
     """Run the full Estágio 1 + Estágio 3 pipeline for one upload."""
-    # shortlist_stage manages its own per-cluster sessions (Anthropic calls
-    # are too slow for one big transaction over Railway's proxy).
+    # cnae_stage and shortlist_stage manage their own per-cluster sessions
+    # (Voyage + Anthropic calls are too slow for one big transaction over
+    # Railway's proxy).
     session_stages = [
         ("parse", _parse_stage, (upload_id, tenant_id, csv_path)),
         ("cluster", _cluster_stage, (upload_id, tenant_id, voyage)),
-        ("cnae", _cnae_stage, (upload_id, voyage, curator)),
     ]
     async with session_factory() as session, session.begin():
         async with tenant_context(session, tenant_id):
@@ -279,6 +288,9 @@ async def processar_upload(
             async with session_factory() as session, session.begin():
                 async with tenant_context(session, tenant_id):
                     await fn(session, *args)
+
+        log.info("pipeline upload=%s stage=cnae starting", upload_id)
+        await _cnae_stage(session_factory, tenant_id, upload_id, voyage, curator)
 
         log.info("pipeline upload=%s stage=shortlist starting", upload_id)
         await _shortlist_stage(session_factory, tenant_id, upload_id, curator)
