@@ -181,6 +181,7 @@ async def _cnae_stage(
                     voyage=voyage,
                     retrieval=lambda emb: top_k_cnaes(session, emb, k=5),
                     curator_pick=partial(pick_cnae, curator),
+                    cache_session=session,
                 )
                 await session.execute(
                     text(
@@ -194,6 +195,10 @@ async def _cnae_stage(
                         "i": str(c.id),
                     },
                 )
+                # Cache upsert (with embedding for future few-shot search) is
+                # done inside classify_cluster; manual_pending entries are not
+                # cached there either, so the cache only ever holds confident
+                # classifications.
 
 
 async def _shortlist_stage(

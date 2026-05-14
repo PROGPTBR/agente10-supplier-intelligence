@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from agente10.api.uploads import get_tenant_id
+from agente10.cache import classification_cache as cache
 from agente10.core.db import get_session_factory
 from agente10.core.tenancy import tenant_context
 from agente10.curator.client import CuratorClient
@@ -230,13 +231,37 @@ async def patch_cluster(
         async with tenant_context(session, tenant_id):
             current = (
                 await session.execute(
-                    text("SELECT cnae FROM spend_clusters WHERE id = :i"),
+                    text(
+                        "SELECT nome_cluster, cnae, cnae_metodo FROM spend_clusters "
+                        "WHERE id = :i"
+                    ),
                     {"i": str(cluster_id)},
                 )
             ).first()
             if not current:
                 raise HTTPException(404, "cluster not found")
             cnae_changed = body.cnae is not None and body.cnae != current.cnae
+
+            if cnae_changed:
+                # Audit trail BEFORE the UPDATE — preserves the human-correction signal
+                # as future training data even if the cluster gets reclassified later.
+                await session.execute(
+                    text("""
+                        INSERT INTO cnae_correction_audit (
+                            tenant_id, cluster_id, descricao_cluster,
+                            cnae_antes, metodo_antes, cnae_depois, notas_revisor
+                        ) VALUES (:t, :i, :d, :ca, :ma, :cd, :n)
+                    """),
+                    {
+                        "t": str(tenant_id),
+                        "i": str(cluster_id),
+                        "d": current.nome_cluster,
+                        "ca": current.cnae,
+                        "ma": current.cnae_metodo,
+                        "cd": body.cnae,
+                        "n": body.notas_revisor,
+                    },
+                )
 
             updates: list[str] = []
             params: dict[str, object] = {"i": str(cluster_id)}
@@ -256,6 +281,17 @@ async def patch_cluster(
                 await session.execute(
                     text(f"UPDATE spend_clusters SET {', '.join(updates)} WHERE id = :i"),
                     params,
+                )
+
+            if cnae_changed:
+                # Cache reflects the human-validated CNAE for this description.
+                # Priority 'revisado_humano' won't be downgraded by future curator runs.
+                await cache.upsert(
+                    session,
+                    current.nome_cluster,
+                    body.cnae,  # type: ignore[arg-type]
+                    confianca=1.0,
+                    metodo="revisado_humano",
                 )
 
     if cnae_changed:

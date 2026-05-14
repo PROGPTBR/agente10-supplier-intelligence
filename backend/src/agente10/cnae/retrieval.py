@@ -6,16 +6,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class CnaeCandidate(BaseModel):
-    """One candidate CNAE subclass with its similarity to the query."""
+    """One candidate CNAE subclass with its similarity to the query.
+
+    `notas_explicativas` and `exemplos_atividades` come from the IBGE 600-page
+    book; they're NOT embedded (would pollute retrieval) but are passed to the
+    curator as auxiliary context for disambiguating sibling subclasses.
+    """
 
     codigo: str
     denominacao: str
     similarity: float
+    notas_explicativas: str | None = None
+    exemplos_atividades: str | None = None
 
 
 _TOP_K_SQL = text("""
     SELECT codigo,
            denominacao,
+           notas_explicativas,
+           exemplos_atividades,
            1 - (embedding <=> CAST(:emb AS vector)) AS similarity
     FROM cnae_taxonomy
     WHERE embedding IS NOT NULL
@@ -43,6 +52,8 @@ async def top_k_cnaes(
             codigo=row.codigo,
             denominacao=row.denominacao,
             similarity=float(row.similarity),
+            notas_explicativas=row.notas_explicativas,
+            exemplos_atividades=row.exemplos_atividades,
         )
         for row in result.all()
     ]
