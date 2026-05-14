@@ -49,3 +49,7 @@ backend/data/cnae_2.3/raw/*.xlsx
 backend/data/cnpj.db
 backend/data/cnpj.db-*
 backend/data/cnpj_sqlite_cache/
+
+# Local uploads (user data) + debug logs
+backend/data/uploads/
+backend_logs.txt

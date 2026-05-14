@@ -21,10 +21,17 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
+    # Comma-separated list of origins allowed by CORS. Defaults to local dev.
+    cors_allow_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
     @field_validator("voyage_api_key", mode="before")
     @classmethod
     def _blank_to_none(cls, v: str | None) -> str | None:
         return v or None
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
 
 def get_settings() -> Settings:

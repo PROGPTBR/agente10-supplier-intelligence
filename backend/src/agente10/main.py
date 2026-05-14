@@ -32,10 +32,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agente 10", version="0.1.0", lifespan=lifespan)
 
-# CORS for dev (Next.js on :3000). Sprint 4 should restrict to deployed origin.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=get_settings().cors_origins_list,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=False,

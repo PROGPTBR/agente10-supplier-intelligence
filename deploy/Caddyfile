@@ -1,0 +1,9 @@
+{$DOMAIN} {
+    reverse_proxy backend:8000
+    encode gzip
+
+    # 50MB upload limit (CSVs podem ser grandes)
+    request_body {
+        max_size 50MB
+    }
+}
