@@ -46,6 +46,21 @@ async def main() -> int:
         return 2
 
     entries = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+
+    # Skip rows whose hierarchy is already loaded — idempotent re-runs after proxy drops
+    conn = await asyncpg.connect(_dsn(), command_timeout=30)
+    done_codes = {
+        r["codigo"]
+        for r in await conn.fetch(
+            "SELECT codigo FROM cnae_taxonomy WHERE divisao_descricao IS NOT NULL"
+        )
+    }
+    await conn.close()
+    if done_codes:
+        before = len(entries)
+        entries = [e for e in entries if e["codigo"] not in done_codes]
+        print(f"Skipping {before - len(entries)} already-loaded codes.", flush=True)
+
     print(f"Loading {len(entries)} IBGE notes...", flush=True)
 
     t0 = time.perf_counter()
