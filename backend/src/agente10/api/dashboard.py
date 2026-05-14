@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -55,7 +56,7 @@ async def dashboard_stats(
                 await session.execute(
                     text(
                         "SELECT id, nome_arquivo, status, linhas_total, "
-                        "linhas_classificadas, data_upload "
+                        "linhas_classificadas, data_upload, data_conclusao "
                         "FROM spend_uploads ORDER BY data_upload DESC LIMIT 5"
                     )
                 )
@@ -64,6 +65,12 @@ async def dashboard_stats(
     recent_uploads: list[UploadSummary] = []
     for r in recent:
         pct = (r.linhas_classificadas / r.linhas_total * 100.0) if r.linhas_total else 0.0
+        if r.status == "pending":
+            duracao = None
+        elif r.data_conclusao is not None:
+            duracao = (r.data_conclusao - r.data_upload).total_seconds()
+        else:
+            duracao = (datetime.now(UTC) - r.data_upload).total_seconds()
         recent_uploads.append(
             UploadSummary(
                 upload_id=r.id,
@@ -73,6 +80,7 @@ async def dashboard_stats(
                 linhas_classificadas=r.linhas_classificadas,
                 data_upload=r.data_upload.isoformat(),
                 progresso_pct=round(pct, 2),
+                duracao_segundos=round(duracao, 1) if duracao is not None else None,
             )
         )
 
