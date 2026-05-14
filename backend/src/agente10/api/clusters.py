@@ -403,6 +403,14 @@ async def patch_cluster(
             cnae_changed = body.cnae is not None and body.cnae != current.cnae
 
             if cnae_changed:
+                taxonomy_hit = (
+                    await session.execute(
+                        text("SELECT denominacao FROM cnae_taxonomy WHERE codigo = :c"),
+                        {"c": body.cnae},
+                    )
+                ).first()
+                if not taxonomy_hit:
+                    raise HTTPException(422, f"cnae '{body.cnae}' not found in cnae_taxonomy")
                 # Audit trail BEFORE the UPDATE — preserves the human-correction signal
                 # as future training data even if the cluster gets reclassified later.
                 await session.execute(

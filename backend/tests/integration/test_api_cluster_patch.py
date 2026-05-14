@@ -77,6 +77,75 @@ async def test_patch_cluster_notas_does_not_trigger_regen(db_engine, two_tenants
 
 
 @pytest.mark.asyncio
+async def test_patch_cluster_rejects_invalid_cnae(db_engine, two_tenants):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from agente10 import main as main_module
+
+    tenant_id, _ = two_tenants
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    upload_id = uuid.uuid4()
+    cluster_id = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SELECT set_config('app.current_tenant_id', :t, true)"),
+            {"t": str(tenant_id)},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO spend_uploads (id, tenant_id, nome_arquivo, "
+                "object_storage_path, status) "
+                "VALUES (:i, :t, 'x.csv', '/tmp/x', 'done')"
+            ),
+            {"i": str(upload_id), "t": str(tenant_id)},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO spend_clusters (id, tenant_id, upload_id, "
+                "nome_cluster, cnae, cnae_confianca, cnae_metodo) "
+                "VALUES (:i, :t, :u, 'X', '4744001', 0.9, 'retrieval')"
+            ),
+            {"i": str(cluster_id), "t": str(tenant_id), "u": str(upload_id)},
+        )
+
+    transport = ASGITransport(app=main_module.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.patch(
+            f"/api/v1/clusters/{cluster_id}",
+            json={"cnae": "9999999"},
+            headers={"X-Tenant-ID": str(tenant_id)},
+        )
+    assert resp.status_code == 422
+    assert "9999999" in resp.json()["detail"]
+
+    # Confirm the cluster was NOT mutated
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SELECT set_config('app.current_tenant_id', :t, true)"),
+            {"t": str(tenant_id)},
+        )
+        cnae_now = await session.scalar(
+            text("SELECT cnae FROM spend_clusters WHERE id = :i"),
+            {"i": str(cluster_id)},
+        )
+    assert cnae_now == "4744001"
+
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("SELECT set_config('app.current_tenant_id', :t, true)"),
+            {"t": str(tenant_id)},
+        )
+        await session.execute(
+            text("DELETE FROM spend_clusters WHERE id = :i"),
+            {"i": str(cluster_id)},
+        )
+        await session.execute(
+            text("DELETE FROM spend_uploads WHERE id = :u"),
+            {"u": str(upload_id)},
+        )
+
+
+@pytest.mark.asyncio
 async def test_patch_cluster_cnae_triggers_regen(db_engine, two_tenants, monkeypatch):
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
