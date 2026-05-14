@@ -26,4 +26,7 @@ RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-CMD ["uv", "run", "uvicorn", "agente10.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Single image, two roles: WORKER_MODE=1 runs the arq queue worker;
+# anything else runs the FastAPI API server. Railway sets WORKER_MODE=1
+# only on the dedicated "worker" service.
+CMD ["sh", "-c", "if [ \"$WORKER_MODE\" = \"1\" ]; then exec uv run arq agente10.worker.tasks.WorkerSettings; else exec uv run uvicorn agente10.main:app --host 0.0.0.0 --port 8000; fi"]
