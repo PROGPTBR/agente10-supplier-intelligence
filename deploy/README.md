@@ -1,4 +1,9 @@
-# Deploy — Hetzner VPS + Vercel
+# Deploy — Hetzner VPS + Vercel (caminho alternativo)
+
+> **Caminho ativo:** o piloto está sendo deployado em [RAILWAY.md](RAILWAY.md).
+> Este documento descreve um caminho alternativo via VPS próprio — útil se
+> futuramente quisermos sair do Railway por custo (Hetzner + DuckDNS sai a
+> ~€6.50/mês contra ~$25-30/mês Railway).
 
 Production deploy do Agente 10 para piloto. Custo: **€6.50/mês** (Hetzner) + Vercel grátis.
 

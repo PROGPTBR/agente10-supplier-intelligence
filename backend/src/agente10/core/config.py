@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     def _blank_to_none(cls, v: str | None) -> str | None:
         return v or None
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _ensure_asyncpg_driver(cls, v: str) -> str:
+        # Railway/Heroku-style DATABASE_URL uses `postgres://` and omits the
+        # asyncpg driver; SQLAlchemy's async engine requires `+asyncpg`.
+        if v.startswith("postgres://"):
+            return "postgresql+asyncpg://" + v[len("postgres://") :]
+        if v.startswith("postgresql://") and "+asyncpg" not in v:
+            return "postgresql+asyncpg://" + v[len("postgresql://") :]
+        return v
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
