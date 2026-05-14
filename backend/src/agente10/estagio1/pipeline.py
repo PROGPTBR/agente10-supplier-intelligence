@@ -16,9 +16,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agente10.cnae.retrieval import top_k_cnaes
+from agente10.cnae.retrieval import top_k_cnaes_hybrid
 from agente10.core.tenancy import tenant_context
 from agente10.curator.client import CuratorClient
+from agente10.curator.cluster_namer import refine_cluster_name
 from agente10.curator.cnae_picker import pick_cnae
 from agente10.curator.shortlist_reranker import rerank_top10
 from agente10.empresas.discovery import find_empresas_by_cnae
@@ -176,29 +177,70 @@ async def _cnae_stage(
     for c in clusters:
         async with session_factory() as session, session.begin():
             async with tenant_context(session, tenant_id):
+                # Sample lines give the curator + namer concrete evidence of
+                # what this cluster actually contains (centroid name alone is
+                # often too narrow).
+                sample_rows = await session.execute(
+                    text(
+                        "SELECT descricao_original FROM spend_linhas "
+                        "WHERE cluster_id = :c ORDER BY id LIMIT 5"
+                    ),
+                    {"c": str(c.id)},
+                )
+                sample_lines = [r.descricao_original for r in sample_rows.all()]
+
                 outcome = await classify_cluster(
                     c.nome_cluster,
                     voyage=voyage,
-                    retrieval=lambda emb: top_k_cnaes(session, emb, k=5),
+                    retrieval_hybrid=lambda emb, k, p: top_k_cnaes_hybrid(
+                        session, emb, k=k, pool_size=p
+                    ),
                     curator_pick=partial(pick_cnae, curator),
                     cache_session=session,
+                    sample_lines=sample_lines,
                 )
+
+                # After CNAE is known, refine the cluster name into something
+                # broader and aligned with the CNAE's domain (only for
+                # high-confidence assignments — manual_pending stays raw).
+                nome_refinado: str | None = None
+                if outcome.cnae_metodo in ("retrieval", "curator", "cache"):
+                    try:
+                        denom_row = await session.execute(
+                            text("SELECT denominacao FROM cnae_taxonomy WHERE codigo = :c"),
+                            {"c": outcome.cnae},
+                        )
+                        denom = denom_row.scalar()
+                        if denom:
+                            refined = await refine_cluster_name(
+                                curator,
+                                c.nome_cluster,
+                                sample_lines,
+                                outcome.cnae,
+                                denom,
+                            )
+                            nome_refinado = refined.nome
+                    except Exception:
+                        nome_refinado = None  # never block on naming failures
+
                 await session.execute(
                     text(
-                        "UPDATE spend_clusters SET cnae=:cnae, cnae_confianca=:c, cnae_metodo=:m "
+                        "UPDATE spend_clusters SET "
+                        "  cnae=:cnae, cnae_confianca=:c, cnae_metodo=:m, "
+                        "  cnaes_secundarios=:sec, "
+                        "  nome_cluster_refinado=:nr "
                         "WHERE id=:i"
                     ),
                     {
                         "cnae": outcome.cnae,
                         "c": outcome.cnae_confianca,
                         "m": outcome.cnae_metodo,
+                        "sec": outcome.cnaes_secundarios,
+                        "nr": nome_refinado,
                         "i": str(c.id),
                     },
                 )
-                # Live progress: update linhas_classificadas to the running
-                # count of linhas whose cluster now has a CNAE. The frontend
-                # polls this every 2s and renders the progress bar.
-                # _denorm_stage will re-compute this at the end (idempotent).
+                # Live progress: running count of linhas whose cluster has CNAE.
                 await session.execute(
                     text("""
                         UPDATE spend_uploads SET linhas_classificadas = COALESCE((
@@ -209,10 +251,6 @@ async def _cnae_stage(
                     """),
                     {"u": str(upload_id)},
                 )
-                # Cache upsert (with embedding for future few-shot search) is
-                # done inside classify_cluster; manual_pending entries are not
-                # cached there either, so the cache only ever holds confident
-                # classifications.
 
 
 async def _shortlist_stage(
@@ -227,7 +265,8 @@ async def _shortlist_stage(
         async with tenant_context(s0, tenant_id):
             result = await s0.execute(
                 text(
-                    "SELECT id, nome_cluster, cnae FROM spend_clusters "
+                    "SELECT id, nome_cluster, cnae, cnaes_secundarios "
+                    "FROM spend_clusters "
                     "WHERE upload_id = :u AND cnae IS NOT NULL AND shortlist_gerada = false"
                 ),
                 {"u": str(upload_id)},
@@ -237,26 +276,31 @@ async def _shortlist_stage(
     for c in clusters:
         async with session_factory() as session, session.begin():
             async with tenant_context(session, tenant_id):
-                entries = await generate_shortlist(
-                    c.nome_cluster,
-                    c.cnae,
-                    discovery=lambda cnae: find_empresas_by_cnae(session, cnae, limit=25),
-                    rerank=partial(rerank_top10, curator),
-                )
-                for entry in entries:
-                    await session.execute(
-                        text(
-                            "INSERT INTO supplier_shortlists "
-                            "(tenant_id, cnae, cnpj_fornecedor, rank_estagio3) "
-                            "VALUES (:t, :cnae, :cnpj, :r)"
-                        ),
-                        {
-                            "t": str(tenant_id),
-                            "cnae": c.cnae,
-                            "cnpj": entry.cnpj,
-                            "r": entry.rank_estagio3,
-                        },
+                # Generate a shortlist for primary + each secondary CNAE.
+                # supplier_shortlists is keyed by (tenant_id, cnae, cnpj) so the
+                # GET endpoint already dedupes across CNAEs at query time.
+                cnaes_alvo = [c.cnae] + list(c.cnaes_secundarios or [])
+                for cnae_target in cnaes_alvo:
+                    entries = await generate_shortlist(
+                        c.nome_cluster,
+                        cnae_target,
+                        discovery=lambda cnae: find_empresas_by_cnae(session, cnae, limit=25),
+                        rerank=partial(rerank_top10, curator),
                     )
+                    for entry in entries:
+                        await session.execute(
+                            text(
+                                "INSERT INTO supplier_shortlists "
+                                "(tenant_id, cnae, cnpj_fornecedor, rank_estagio3) "
+                                "VALUES (:t, :cnae, :cnpj, :r)"
+                            ),
+                            {
+                                "t": str(tenant_id),
+                                "cnae": cnae_target,
+                                "cnpj": entry.cnpj,
+                                "r": entry.rank_estagio3,
+                            },
+                        )
                 await session.execute(
                     text("UPDATE spend_clusters SET shortlist_gerada = true WHERE id = :i"),
                     {"i": str(c.id)},

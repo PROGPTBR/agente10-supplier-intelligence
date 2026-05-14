@@ -40,7 +40,16 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
     <div className="space-y-6">
       <div>
         <p className="text-sm font-medium text-zinc-700">Cluster</p>
-        <p className="text-lg font-semibold">{cluster.nome_cluster}</p>
+        <p className="text-lg font-semibold">
+          {cluster.nome_cluster_refinado ?? cluster.nome_cluster}
+        </p>
+        {cluster.nome_cluster_refinado &&
+          cluster.nome_cluster_refinado !== cluster.nome_cluster && (
+            <p className="text-xs text-zinc-500">
+              Nome bruto do clusterizador:{" "}
+              <span className="font-mono">{cluster.nome_cluster}</span>
+            </p>
+          )}
         <p className="mt-1 text-xs text-zinc-500">
           {cluster.num_linhas} linhas
         </p>
@@ -57,13 +66,21 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-zinc-700">CNAE atual:</span>
         <span className="font-mono text-sm">{cluster.cnae ?? "—"}</span>
         <ConfidenceBadge
           metodo={cluster.cnae_metodo}
           confianca={cluster.cnae_confianca}
         />
+        {cluster.cnaes_secundarios.length > 0 && (
+          <span className="text-xs text-zinc-500">
+            + secundários:{" "}
+            <span className="font-mono">
+              {cluster.cnaes_secundarios.join(", ")}
+            </span>
+          </span>
+        )}
       </div>
 
       <ClusterCnaeEditor value={cnae} onChange={setCnae} />

@@ -11,9 +11,10 @@ export function ClusterTable({
   searchTerm: string;
 }) {
   const filtered = searchTerm.trim()
-    ? clusters.filter((c) =>
-        c.nome_cluster.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
+    ? clusters.filter((c) => {
+        const haystack = c.nome_cluster + " " + (c.nome_cluster_refinado ?? "");
+        return haystack.toLowerCase().includes(searchTerm.toLowerCase());
+      })
     : clusters;
 
   if (filtered.length === 0) {
@@ -51,7 +52,13 @@ export function ClusterTable({
         {filtered.map((c) => (
           <tr key={c.id} className="hover:bg-zinc-50">
             <td className="border-b border-zinc-100 py-3 font-medium text-zinc-900">
-              {c.nome_cluster}
+              {c.nome_cluster_refinado ?? c.nome_cluster}
+              {c.nome_cluster_refinado &&
+                c.nome_cluster_refinado !== c.nome_cluster && (
+                  <span className="block text-xs font-normal text-zinc-500">
+                    bruto: {c.nome_cluster}
+                  </span>
+                )}
             </td>
             <td className="border-b border-zinc-100 py-3 text-zinc-700">
               {c.num_linhas}
@@ -61,6 +68,11 @@ export function ClusterTable({
               {c.cnae_descricao && (
                 <span className="block text-xs text-zinc-500">
                   {c.cnae_descricao}
+                </span>
+              )}
+              {c.cnaes_secundarios.length > 0 && (
+                <span className="mt-1 block text-xs text-zinc-500">
+                  + {c.cnaes_secundarios.join(", ")}
                 </span>
               )}
             </td>

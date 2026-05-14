@@ -21,10 +21,12 @@ router = APIRouter(prefix="/api/v1", tags=["clusters"])
 class ClusterSummary(BaseModel):
     id: UUID
     nome_cluster: str
+    nome_cluster_refinado: str | None
     cnae: str | None
     cnae_descricao: str | None
     cnae_confianca: float | None
     cnae_metodo: str | None
+    cnaes_secundarios: list[str]
     num_linhas: int
     revisado_humano: bool
     shortlist_size: int
@@ -34,10 +36,12 @@ class ClusterDetail(BaseModel):
     id: UUID
     upload_id: UUID
     nome_cluster: str
+    nome_cluster_refinado: str | None
     cnae: str | None
     cnae_descricao: str | None
     cnae_confianca: float | None
     cnae_metodo: str | None
+    cnaes_secundarios: list[str]
     num_linhas: int
     revisado_humano: bool
     notas_revisor: str | None
@@ -73,8 +77,10 @@ async def list_clusters_for_upload(
     factory = get_session_factory()
     sql = """
         SELECT
-            c.id, c.nome_cluster, c.cnae, ct.denominacao AS cnae_descricao,
-            c.cnae_confianca, c.cnae_metodo, c.num_linhas, c.revisado_humano,
+            c.id, c.nome_cluster, c.nome_cluster_refinado,
+            c.cnae, ct.denominacao AS cnae_descricao,
+            c.cnae_confianca, c.cnae_metodo, c.cnaes_secundarios,
+            c.num_linhas, c.revisado_humano,
             (SELECT COUNT(*) FROM supplier_shortlists s WHERE s.cnae = c.cnae
                 AND s.tenant_id = c.tenant_id) AS shortlist_size
         FROM spend_clusters c
@@ -97,10 +103,12 @@ async def list_clusters_for_upload(
         ClusterSummary(
             id=r.id,
             nome_cluster=r.nome_cluster,
+            nome_cluster_refinado=r.nome_cluster_refinado,
             cnae=r.cnae,
             cnae_descricao=r.cnae_descricao,
             cnae_confianca=r.cnae_confianca,
             cnae_metodo=r.cnae_metodo,
+            cnaes_secundarios=list(r.cnaes_secundarios or []),
             num_linhas=r.num_linhas,
             revisado_humano=r.revisado_humano,
             shortlist_size=int(r.shortlist_size),
@@ -120,9 +128,12 @@ async def get_cluster(
             row = (
                 await session.execute(
                     text("""
-                        SELECT c.id, c.upload_id, c.nome_cluster, c.cnae,
+                        SELECT c.id, c.upload_id, c.nome_cluster,
+                               c.nome_cluster_refinado, c.cnae,
                                ct.denominacao AS cnae_descricao,
-                               c.cnae_confianca, c.cnae_metodo, c.num_linhas,
+                               c.cnae_confianca, c.cnae_metodo,
+                               c.cnaes_secundarios,
+                               c.num_linhas,
                                c.revisado_humano, c.notas_revisor,
                                c.shortlist_gerada
                         FROM spend_clusters c
@@ -147,10 +158,12 @@ async def get_cluster(
         id=row.id,
         upload_id=row.upload_id,
         nome_cluster=row.nome_cluster,
+        nome_cluster_refinado=row.nome_cluster_refinado,
         cnae=row.cnae,
         cnae_descricao=row.cnae_descricao,
         cnae_confianca=row.cnae_confianca,
         cnae_metodo=row.cnae_metodo,
+        cnaes_secundarios=list(row.cnaes_secundarios or []),
         num_linhas=row.num_linhas,
         revisado_humano=row.revisado_humano,
         notas_revisor=row.notas_revisor,
@@ -169,7 +182,7 @@ async def get_cluster_shortlist(
         async with tenant_context(session, tenant_id):
             cnae_row = (
                 await session.execute(
-                    text("SELECT cnae FROM spend_clusters WHERE id = :i"),
+                    text("SELECT cnae, cnaes_secundarios " "FROM spend_clusters WHERE id = :i"),
                     {"i": str(cluster_id)},
                 )
             ).first()
@@ -177,10 +190,8 @@ async def get_cluster_shortlist(
                 raise HTTPException(404, "cluster not found")
             if not cnae_row.cnae:
                 return []
-            # DISTINCT ON dedupes (cnae, cnpj) collisions when multiple clusters
-            # share the same CNAE (each cluster's _shortlist_stage inserts its
-            # own top-10 without UPSERT). Sprint 4: add UNIQUE constraint on
-            # supplier_shortlists(tenant_id, cnae, cnpj_fornecedor).
+            # Query suppliers across primary CNAE + all secondaries; dedupe by CNPJ.
+            cnaes_alvo = [cnae_row.cnae] + list(cnae_row.cnaes_secundarios or [])
             rows = (
                 await session.execute(
                     text("""
@@ -189,7 +200,7 @@ async def get_cluster_shortlist(
                                 s.cnpj_fornecedor AS cnpj,
                                 s.rank_estagio3
                             FROM supplier_shortlists s
-                            WHERE s.cnae = :c AND s.tenant_id = :t
+                            WHERE s.cnae = ANY(:cnaes) AND s.tenant_id = :t
                             ORDER BY s.cnpj_fornecedor, s.rank_estagio3
                         )
                         SELECT d.cnpj, d.rank_estagio3,
@@ -200,7 +211,7 @@ async def get_cluster_shortlist(
                         ORDER BY d.rank_estagio3
                         LIMIT 10
                         """),
-                    {"c": cnae_row.cnae, "t": str(tenant_id)},
+                    {"cnaes": cnaes_alvo, "t": str(tenant_id)},
                 )
             ).all()
     return [

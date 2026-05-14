@@ -26,7 +26,9 @@ DATA_PATH = Path(__file__).parent.parent / "data" / "cnae_2.3" / "notas_ibge.jso
 UPDATE_SQL = """
 UPDATE cnae_taxonomy SET
     notas_explicativas = $2,
-    exemplos_atividades = $3
+    exemplos_atividades = $3,
+    divisao_descricao = $4,
+    grupo_descricao = $5
 WHERE codigo = $1
 """
 
@@ -62,6 +64,8 @@ async def main() -> int:
                             e["codigo"],
                             e.get("notas_explicativas") or None,
                             e.get("exemplos_atividades") or None,
+                            e.get("divisao_descricao") or None,
+                            e.get("grupo_descricao") or None,
                         )
                 await conn.close()
                 total += len(chunk)
