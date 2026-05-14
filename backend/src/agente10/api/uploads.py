@@ -64,6 +64,7 @@ class UploadSummary(BaseModel):
 
 class UploadStatus(BaseModel):
     upload_id: UUID
+    nome_arquivo: str
     status: str
     linhas_total: int
     linhas_classificadas: int
@@ -225,7 +226,7 @@ async def get_upload(
         async with tenant_context(session, tenant_id):
             row = await session.execute(
                 text(
-                    "SELECT id, status, linhas_total, linhas_classificadas, "
+                    "SELECT id, nome_arquivo, status, linhas_total, linhas_classificadas, "
                     "erro, data_upload, data_conclusao, metadados "
                     "FROM spend_uploads WHERE id = :u"
                 ),
@@ -258,6 +259,7 @@ async def get_upload(
 
     return UploadStatus(
         upload_id=r.id,
+        nome_arquivo=r.nome_arquivo,
         status=r.status,
         linhas_total=r.linhas_total,
         linhas_classificadas=r.linhas_classificadas,

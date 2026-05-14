@@ -72,7 +72,7 @@ export default function UploadsListPage() {
               <tr key={u.upload_id} className="hover:bg-zinc-50">
                 <td className="border-b border-zinc-100 py-3">
                   <Link
-                    href={`/uploads/${u.upload_id}`}
+                    href={`/relatorios/${u.upload_id}`}
                     className="font-medium text-zinc-900 hover:underline"
                   >
                     {u.nome_arquivo}

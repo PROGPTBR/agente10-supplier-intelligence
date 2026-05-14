@@ -24,6 +24,7 @@ export type ShortlistConfig = z.infer<typeof ShortlistConfig>;
 
 export const UploadStatus = z.object({
   upload_id: z.string().uuid(),
+  nome_arquivo: z.string(),
   status: z.string(),
   linhas_total: z.number(),
   linhas_classificadas: z.number(),
