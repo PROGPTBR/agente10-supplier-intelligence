@@ -19,11 +19,17 @@ export default function UploadDetailPage({
   const { id } = use(params);
   const upload = useUploadStatusQuery(id);
   const [filters, setFilters] = useState<ClusterFilterState>({ search: "" });
-  const done = upload.data?.status === "done";
+  // Show clusters as soon as classification is complete (linhas_classificadas
+  // reached linhas_total). Shortlist stage may still be running in background
+  // but the cluster table itself is already meaningful.
+  const classificationDone =
+    upload.data !== undefined &&
+    upload.data.linhas_total > 0 &&
+    upload.data.linhas_classificadas >= upload.data.linhas_total;
   const clusters = useClustersQuery(
     id,
     { metodo: filters.metodo, revisado: filters.revisado },
-    { enabled: done },
+    { enabled: classificationDone },
   );
 
   if (upload.isLoading)
@@ -39,8 +45,11 @@ export default function UploadDetailPage({
         status={upload.data.status}
         pct={upload.data.progresso_pct}
         erro={upload.data.erro}
+        clustersTotal={upload.data.clusters_total}
+        clustersClassificados={upload.data.clusters_classificados}
+        clustersComShortlist={upload.data.clusters_com_shortlist}
       />
-      {done && (
+      {classificationDone && (
         <div className="space-y-4">
           <h2 className="text-lg font-medium">Clusters</h2>
           <ClusterFilters value={filters} onChange={setFilters} />

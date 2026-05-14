@@ -19,6 +19,9 @@ export const UploadStatus = z.object({
   linhas_classificadas: z.number(),
   erro: z.string().nullable(),
   progresso_pct: z.number(),
+  clusters_total: z.number(),
+  clusters_classificados: z.number(),
+  clusters_com_shortlist: z.number(),
 });
 export type UploadStatus = z.infer<typeof UploadStatus>;
 

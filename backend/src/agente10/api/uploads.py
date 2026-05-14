@@ -68,6 +68,9 @@ class UploadStatus(BaseModel):
     linhas_classificadas: int
     erro: str | None
     progresso_pct: float
+    clusters_total: int
+    clusters_classificados: int  # com cnae assignment
+    clusters_com_shortlist: int  # shortlist_gerada=true
 
 
 @router.get("/uploads", response_model=list[UploadSummary])
@@ -201,8 +204,19 @@ async def get_upload(
                 {"u": str(upload_id)},
             )
             r = row.first()
-    if not r:
-        raise HTTPException(404, "upload not found")
+            if not r:
+                raise HTTPException(404, "upload not found")
+            stats = await session.execute(
+                text(
+                    "SELECT "
+                    "  COUNT(*) AS total, "
+                    "  COUNT(*) FILTER (WHERE cnae IS NOT NULL) AS com_cnae, "
+                    "  COUNT(*) FILTER (WHERE shortlist_gerada = true) AS com_sl "
+                    "FROM spend_clusters WHERE upload_id = :u"
+                ),
+                {"u": str(upload_id)},
+            )
+            s = stats.first()
     pct = (r.linhas_classificadas / r.linhas_total * 100.0) if r.linhas_total else 0.0
     return UploadStatus(
         upload_id=r.id,
@@ -211,4 +225,7 @@ async def get_upload(
         linhas_classificadas=r.linhas_classificadas,
         erro=r.erro,
         progresso_pct=round(pct, 2),
+        clusters_total=int(s.total) if s else 0,
+        clusters_classificados=int(s.com_cnae) if s else 0,
+        clusters_com_shortlist=int(s.com_sl) if s else 0,
     )
