@@ -20,7 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+    # postgis intentionally not required — `empresas.geom` column was removed
+    # (was unused, only declared). Railway's stock Postgres lacks postgis.
+    # Re-add if geo queries are needed later via custom Postgres image.
 
     # empresas
     op.create_table(
@@ -61,7 +63,6 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.execute("ALTER TABLE empresas ADD COLUMN geom geography(POINT, 4326)")
     op.create_index("idx_empresas_cnae_primario", "empresas", ["cnae_primario"])
     op.create_index("idx_empresas_uf_municipio", "empresas", ["uf", "municipio"])
     op.create_index("idx_empresas_situacao", "empresas", ["situacao_cadastral"])

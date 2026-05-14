@@ -1,7 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from geoalchemy2 import Geography
 from sqlalchemy import ARRAY, CHAR, DATE, NUMERIC, TIMESTAMP, Text, func
 from sqlalchemy.dialects.postgresql import VARCHAR
 from sqlalchemy.orm import Mapped, mapped_column
@@ -35,9 +34,6 @@ class Empresa(Base):
     municipio: Mapped[str | None] = mapped_column(Text, nullable=True)
     cep: Mapped[str | None] = mapped_column(VARCHAR(8), nullable=True)
     endereco: Mapped[str | None] = mapped_column(Text, nullable=True)
-    geom: Mapped[str | None] = mapped_column(
-        Geography(geometry_type="POINT", srid=4326), nullable=True
-    )
     telefone: Mapped[str | None] = mapped_column(Text, nullable=True)
     email: Mapped[str | None] = mapped_column(Text, nullable=True)
     ultima_atualizacao_rf: Mapped[date] = mapped_column(DATE, nullable=False)

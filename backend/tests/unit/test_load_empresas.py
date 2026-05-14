@@ -99,7 +99,6 @@ def test_denormalized_fields(sqlite_with_2_empresas):
     assert row["municipio"] == "Sao Paulo"
     assert row["telefone"] == "11999999999"
     assert row["email"] == "a@b.com"
-    assert row["geom"] is None
 
 
 def test_handles_empty_secondary_cnaes(sqlite_with_2_empresas):

@@ -9,12 +9,18 @@ ENV UV_LINK_MODE=copy \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src
 
-COPY pyproject.toml uv.lock ./
+# Railway builds from the repo root (where .git is), so all paths are
+# prefixed with `backend/`. Local docker-compose uses `context: ./backend`
+# which would break these — but local prod compose is no longer used (moved
+# to Railway). Local dev still uses the same paths via docker-compose.yml
+# which sets `context: ./backend` — that needs adjustment if dev compose
+# is revived later.
+COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-install-project
 
-COPY src ./src
-COPY alembic ./alembic
-COPY alembic.ini ./
+COPY backend/src ./src
+COPY backend/alembic ./alembic
+COPY backend/alembic.ini ./
 
 RUN uv sync --frozen --no-dev
 

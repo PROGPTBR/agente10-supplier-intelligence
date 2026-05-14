@@ -80,7 +80,7 @@ INSERT INTO empresas (
     situacao_cadastral, data_abertura,
     porte, capital_social, natureza_juridica,
     uf, municipio, cep, endereco,
-    geom, telefone, email, ultima_atualizacao_rf
+    telefone, email, ultima_atualizacao_rf
 )
 VALUES (
     $1, $2, $3,
@@ -88,7 +88,7 @@ VALUES (
     'ATIVA', $6,
     $7, $8, $9,
     $10, $11, $12, $13,
-    NULL, $14, $15, CURRENT_DATE
+    $14, $15, CURRENT_DATE
 )
 ON CONFLICT (cnpj) DO UPDATE SET
     razao_social         = EXCLUDED.razao_social,
@@ -155,7 +155,6 @@ def build_empresa_rows(
             "endereco": r["endereco"] or None,
             "telefone": r["telefone"] or None,
             "email": r["email"],
-            "geom": None,
         }
 
 
