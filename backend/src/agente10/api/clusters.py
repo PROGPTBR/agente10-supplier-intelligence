@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date as date_t
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -13,8 +13,7 @@ from agente10.api.uploads import get_tenant_id
 from agente10.cache import classification_cache as cache
 from agente10.core.db import get_session_factory
 from agente10.core.tenancy import tenant_context
-from agente10.curator.client import CuratorClient
-from agente10.estagio3.shortlist_generator import regenerate_shortlist_for_cluster
+from agente10.worker.client import get_pool
 
 router = APIRouter(prefix="/api/v1", tags=["clusters"])
 
@@ -223,7 +222,6 @@ async def get_cluster_shortlist(
 async def patch_cluster(
     cluster_id: UUID,
     body: ClusterPatch,
-    background: BackgroundTasks,
     tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
 ) -> ClusterDetail:
     factory = get_session_factory()
@@ -295,12 +293,11 @@ async def patch_cluster(
                 )
 
     if cnae_changed:
-        background.add_task(
-            regenerate_shortlist_for_cluster,
-            cluster_id,
-            tenant_id,
-            factory,
-            CuratorClient(),
+        pool = get_pool()
+        await pool.enqueue_job(
+            "run_regenerate_shortlist",
+            str(cluster_id),
+            str(tenant_id),
         )
 
     return await get_cluster(cluster_id, tenant_id=tenant_id)

@@ -11,6 +11,7 @@ from agente10.api.dashboard import router as dashboard_router
 from agente10.api.uploads import router as uploads_router
 from agente10.core.config import get_settings
 from agente10.core.db import dispose_engine, get_engine, init_engine
+from agente10.worker.client import close_pool, init_pool
 
 _redis_client: redis_asyncio.Redis | None = None
 
@@ -23,8 +24,12 @@ async def lifespan(app: FastAPI):
     global _redis_client
     _redis_client = redis_asyncio.from_url(settings.redis_url, decode_responses=True)
 
+    # arq pool for enqueueing jobs to the worker service
+    await init_pool()
+
     yield
 
+    await close_pool()
     if _redis_client is not None:
         await _redis_client.aclose()
     await dispose_engine()

@@ -66,3 +66,29 @@ export function useCreateUploadMutation() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["uploads"] }),
   });
 }
+
+export function useRetryUploadMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (uploadId: string) =>
+      await apiFetch<{ upload_id: string; status: string }>(
+        `/api/v1/uploads/${uploadId}/retry`,
+        { method: "POST" },
+      ),
+    onSuccess: (_data, uploadId) => {
+      qc.invalidateQueries({ queryKey: ["uploads"] });
+      qc.invalidateQueries({ queryKey: ["uploads", uploadId] });
+    },
+  });
+}
+
+export function useDeleteUploadMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (uploadId: string) =>
+      await apiFetch<void>(`/api/v1/uploads/${uploadId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["uploads"] }),
+  });
+}

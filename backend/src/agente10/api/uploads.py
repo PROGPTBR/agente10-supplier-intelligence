@@ -9,7 +9,6 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -22,10 +21,8 @@ from sqlalchemy import text
 
 from agente10.core.db import get_session_factory
 from agente10.core.tenancy import tenant_context
-from agente10.curator.client import CuratorClient
 from agente10.estagio1.csv_parser import CsvParseError, preview_catalog_bytes
-from agente10.estagio1.pipeline import processar_upload
-from agente10.integrations.voyage import VoyageClient
+from agente10.worker.client import get_pool
 
 router = APIRouter(prefix="/api/v1", tags=["uploads"])
 
@@ -128,7 +125,6 @@ async def preview_upload(
 
 @router.post("/uploads", response_model=UploadCreated, status_code=202)
 async def create_upload(
-    background: BackgroundTasks,
     tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
     nome_arquivo: str = Form(...),
@@ -173,16 +169,13 @@ async def create_upload(
                 },
             )
 
-    voyage = VoyageClient()
-    curator = CuratorClient()
-    background.add_task(
-        processar_upload,
-        upload_id,
-        tenant_id,
-        storage_path,
-        factory,
-        voyage,
-        curator,
+    # Enqueue to the persistent arq worker (survives API restarts).
+    pool = get_pool()
+    await pool.enqueue_job(
+        "run_pipeline",
+        str(upload_id),
+        str(tenant_id),
+        str(storage_path),
         mapping,
     )
     return UploadCreated(upload_id=upload_id, status="pending")
@@ -229,3 +222,82 @@ async def get_upload(
         clusters_classificados=int(s.com_cnae) if s else 0,
         clusters_com_shortlist=int(s.com_sl) if s else 0,
     )
+
+
+@router.post("/uploads/{upload_id}/retry", response_model=UploadCreated, status_code=202)
+async def retry_upload(
+    upload_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> UploadCreated:
+    """Re-enqueue a stuck or failed upload. Pipeline stages are idempotent
+    (parse skips if linhas exist, cnae filters WHERE cnae IS NULL, shortlist
+    filters WHERE shortlist_gerada=false), so retry resumes from wherever it
+    died rather than redoing finished work.
+    """
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            row = (
+                await session.execute(
+                    text("SELECT object_storage_path FROM spend_uploads WHERE id = :u"),
+                    {"u": str(upload_id)},
+                )
+            ).first()
+            if not row:
+                raise HTTPException(404, "upload not found")
+            # Reset error + status so the UI shows progress again
+            await session.execute(
+                text("UPDATE spend_uploads SET status='pending', erro=NULL " "WHERE id = :u"),
+                {"u": str(upload_id)},
+            )
+
+    pool = get_pool()
+    await pool.enqueue_job(
+        "run_pipeline",
+        str(upload_id),
+        str(tenant_id),
+        row.object_storage_path,
+        None,  # column_mapping was already applied on the first try (rows persist)
+    )
+    return UploadCreated(upload_id=upload_id, status="pending")
+
+
+@router.delete("/uploads/{upload_id}", status_code=204)
+async def delete_upload(
+    upload_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> None:
+    """Remove an upload and ALL its child data: linhas, clusters, shortlists.
+
+    Shortlists are keyed by (tenant_id, cnae, cnpj) — not per-upload — so we
+    only delete supplier_shortlists rows that were INSERTed exclusively because
+    of this upload's clusters. Easier safe path: leave supplier_shortlists alone
+    (they're cross-upload by design) and only remove this upload's own rows.
+    """
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            existing = (
+                await session.execute(
+                    text("SELECT 1 FROM spend_uploads WHERE id = :u"),
+                    {"u": str(upload_id)},
+                )
+            ).first()
+            if not existing:
+                raise HTTPException(404, "upload not found")
+            await session.execute(
+                text("DELETE FROM spend_linhas WHERE upload_id = :u"),
+                {"u": str(upload_id)},
+            )
+            await session.execute(
+                text("DELETE FROM spend_clusters WHERE upload_id = :u"),
+                {"u": str(upload_id)},
+            )
+            await session.execute(
+                text("DELETE FROM concentracao_categorias WHERE upload_id = :u"),
+                {"u": str(upload_id)},
+            )
+            await session.execute(
+                text("DELETE FROM spend_uploads WHERE id = :u"),
+                {"u": str(upload_id)},
+            )
