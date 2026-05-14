@@ -154,18 +154,27 @@ def _normalize_header(header: str) -> str:
     return ascii_only.lower().strip()
 
 
-def _map_headers(raw_headers: list[str]) -> list[str]:
+def _map_headers(raw_headers: list[str], overrides: dict[str, str] | None = None) -> list[str]:
     """Map each raw header to our internal field name via _HEADER_ALIASES.
+
+    `overrides` is a user-supplied mapping (raw header → internal field name)
+    that takes precedence over the alias table. Useful when the catalog has a
+    non-standard column name that the user wants to map manually.
 
     Unknown headers keep their original name (will go to `extras`).
     """
+    overrides = overrides or {}
     mapped: list[str] = []
     for h in raw_headers:
         if h is None or h == "":
             mapped.append("")
             continue
-        normalized = _normalize_header(str(h))
-        mapped.append(_HEADER_ALIASES.get(normalized, h))
+        h_str = str(h)
+        if h_str in overrides:
+            mapped.append(overrides[h_str])
+            continue
+        normalized = _normalize_header(h_str)
+        mapped.append(_HEADER_ALIASES.get(normalized, h_str))
     return mapped
 
 
@@ -192,14 +201,14 @@ def _row_from_dict(line_num: int, raw: dict[str, str]) -> ParsedRow:
     return ParsedRow(**known, extras=extras)
 
 
-def _parse_csv_text(text: str) -> Iterator[ParsedRow]:
+def _parse_csv_text(text: str, overrides: dict[str, str] | None = None) -> Iterator[ParsedRow]:
     sample = text[:4096]
     delimiter = _sniff_delimiter(sample)
     raw_reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     header_row = next(raw_reader, None)
     if not header_row:
         raise CsvParseError("CSV is empty")
-    headers = _map_headers([h or "" for h in header_row])
+    headers = _map_headers([h or "" for h in header_row], overrides)
     if "descricao_original" not in headers:
         raise CsvParseError(
             f"missing required column 'descricao_original' "
@@ -216,14 +225,14 @@ def _parse_csv_text(text: str) -> Iterator[ParsedRow]:
         yield _row_from_dict(i, raw)
 
 
-def _parse_xlsx(data: bytes) -> Iterator[ParsedRow]:
+def _parse_xlsx(data: bytes, overrides: dict[str, str] | None = None) -> Iterator[ParsedRow]:
     wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     ws = wb.active
     rows = ws.iter_rows(values_only=True)
     raw_headers = next(rows, None)
     if not raw_headers:
         raise CsvParseError("XLSX is empty")
-    headers = _map_headers([str(h) if h is not None else "" for h in raw_headers])
+    headers = _map_headers([str(h) if h is not None else "" for h in raw_headers], overrides)
     if "descricao_original" not in headers:
         raise CsvParseError(
             f"missing required column 'descricao_original' "
@@ -236,9 +245,73 @@ def _parse_xlsx(data: bytes) -> Iterator[ParsedRow]:
         yield _row_from_dict(i, raw)
 
 
-def parse_catalog_bytes(data: bytes, filename: str) -> Iterator[ParsedRow]:
-    """Yield ParsedRow objects from a CSV or XLSX file's raw bytes."""
+def parse_catalog_bytes(
+    data: bytes,
+    filename: str,
+    overrides: dict[str, str] | None = None,
+) -> Iterator[ParsedRow]:
+    """Yield ParsedRow objects from a CSV or XLSX file's raw bytes.
+
+    `overrides` maps raw header strings (as they appear in the file) to internal
+    field names like "descricao_original". Use it when the file's headers are
+    not in `_HEADER_ALIASES`.
+    """
     if _is_xlsx(filename):
-        yield from _parse_xlsx(data)
+        yield from _parse_xlsx(data, overrides)
     else:
-        yield from _parse_csv_text(_decode(data))
+        yield from _parse_csv_text(_decode(data), overrides)
+
+
+def preview_catalog_bytes(data: bytes, filename: str, sample_size: int = 5) -> dict[str, Any]:
+    """Inspect a catalog file without enforcing the description column.
+
+    Returns:
+        {
+            "columns": list[str],         # raw headers as they appear
+            "auto_mapping": dict[str,str],# raw header → internal field if alias matched
+            "sample_rows": list[list],    # first N rows (raw values, aligned to columns)
+            "needs_mapping": bool,        # True if no header auto-mapped to descricao_original
+        }
+    """
+    if _is_xlsx(filename):
+        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        ws = wb.active
+        rows_iter = ws.iter_rows(values_only=True)
+        raw_headers = next(rows_iter, None) or ()
+        columns = [str(h) if h is not None else "" for h in raw_headers]
+        sample: list[list[str]] = []
+        for row in rows_iter:
+            if len(sample) >= sample_size:
+                break
+            if not row or all(v is None or (isinstance(v, str) and v.strip() == "") for v in row):
+                continue
+            sample.append(["" if v is None else str(v) for v in row])
+    else:
+        text = _decode(data)
+        delimiter = _sniff_delimiter(text[:4096])
+        reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+        header_row = next(reader, None) or []
+        columns = [h or "" for h in header_row]
+        sample = []
+        for row in reader:
+            if len(sample) >= sample_size:
+                break
+            if not row or all((v or "").strip() == "" for v in row):
+                continue
+            sample.append(list(row))
+
+    auto_mapping: dict[str, str] = {}
+    for col in columns:
+        if not col:
+            continue
+        mapped = _HEADER_ALIASES.get(_normalize_header(col))
+        if mapped:
+            auto_mapping[col] = mapped
+
+    needs_mapping = "descricao_original" not in auto_mapping.values()
+    return {
+        "columns": columns,
+        "auto_mapping": auto_mapping,
+        "sample_rows": sample,
+        "needs_mapping": needs_mapping,
+    }

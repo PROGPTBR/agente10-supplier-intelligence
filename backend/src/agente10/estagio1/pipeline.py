@@ -44,7 +44,11 @@ async def _set_status(
 
 
 async def _parse_stage(
-    session: AsyncSession, upload_id: UUID, tenant_id: UUID, csv_path: Path
+    session: AsyncSession,
+    upload_id: UUID,
+    tenant_id: UUID,
+    csv_path: Path,
+    column_mapping: dict[str, str] | None = None,
 ) -> int:
     existing = await session.scalar(
         text("SELECT COUNT(*) FROM spend_linhas WHERE upload_id = :u"),
@@ -55,7 +59,7 @@ async def _parse_stage(
         return int(existing)
 
     raw = csv_path.read_bytes()
-    rows = list(parse_catalog_bytes(raw, csv_path.name))
+    rows = list(parse_catalog_bytes(raw, csv_path.name, overrides=column_mapping))
     for row in rows:
         await session.execute(
             text("""
@@ -269,13 +273,14 @@ async def processar_upload(
     session_factory: async_sessionmaker[AsyncSession],
     voyage: VoyageClient,
     curator: CuratorClient,
+    column_mapping: dict[str, str] | None = None,
 ) -> None:
     """Run the full Estágio 1 + Estágio 3 pipeline for one upload."""
     # cnae_stage and shortlist_stage manage their own per-cluster sessions
     # (Voyage + Anthropic calls are too slow for one big transaction over
     # Railway's proxy).
     session_stages = [
-        ("parse", _parse_stage, (upload_id, tenant_id, csv_path)),
+        ("parse", _parse_stage, (upload_id, tenant_id, csv_path, column_mapping)),
         ("cluster", _cluster_stage, (upload_id, tenant_id, voyage)),
     ]
     async with session_factory() as session, session.begin():

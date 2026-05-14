@@ -25,13 +25,39 @@ export function useUploadStatusQuery(uploadId: string) {
   });
 }
 
-export function useCreateUploadMutation() {
-  const qc = useQueryClient();
+export type UploadPreview = {
+  columns: string[];
+  auto_mapping: Record<string, string>;
+  sample_rows: string[][];
+  needs_mapping: boolean;
+};
+
+export function usePreviewUploadMutation() {
   return useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("nome_arquivo", file.name);
+      return await apiFetch<UploadPreview>("/api/v1/uploads/preview", {
+        method: "POST",
+        body: fd,
+      });
+    },
+  });
+}
+
+export function useCreateUploadMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      file: File;
+      columnMapping?: Record<string, string>;
+    }) => {
+      const fd = new FormData();
+      fd.append("file", args.file);
+      fd.append("nome_arquivo", args.file.name);
+      if (args.columnMapping && Object.keys(args.columnMapping).length > 0) {
+        fd.append("column_mapping", JSON.stringify(args.columnMapping));
+      }
       return await apiFetch<{ upload_id: string; status: string }>(
         "/api/v1/uploads",
         { method: "POST", body: fd },

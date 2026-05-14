@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from uuid import UUID
@@ -22,6 +23,7 @@ from sqlalchemy import text
 from agente10.core.db import get_session_factory
 from agente10.core.tenancy import tenant_context
 from agente10.curator.client import CuratorClient
+from agente10.estagio1.csv_parser import CsvParseError, preview_catalog_bytes
 from agente10.estagio1.pipeline import processar_upload
 from agente10.integrations.voyage import VoyageClient
 
@@ -40,6 +42,13 @@ async def get_tenant_id(x_tenant_id: str = Header(...)) -> UUID:
 class UploadCreated(BaseModel):
     upload_id: UUID
     status: str
+
+
+class UploadPreview(BaseModel):
+    columns: list[str]
+    auto_mapping: dict[str, str]
+    sample_rows: list[list[str]]
+    needs_mapping: bool
 
 
 class UploadSummary(BaseModel):
@@ -94,6 +103,26 @@ async def list_uploads(
     return out
 
 
+@router.post("/uploads/preview", response_model=UploadPreview)
+async def preview_upload(
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+    file: UploadFile = File(...),  # noqa: B008
+) -> UploadPreview:
+    """Inspect a catalog file's headers + sample rows without saving anything.
+
+    Frontend calls this before POST /uploads so the user can map columns
+    when our alias table doesn't recognize them.
+    """
+    raw = await file.read()
+    if len(raw) > MAX_BYTES:
+        raise HTTPException(413, "file too large (>50MB)")
+    try:
+        info = preview_catalog_bytes(raw, file.filename or "upload.csv")
+    except CsvParseError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return UploadPreview(**info)
+
+
 @router.post("/uploads", response_model=UploadCreated, status_code=202)
 async def create_upload(
     background: BackgroundTasks,
@@ -101,10 +130,21 @@ async def create_upload(
     file: UploadFile = File(...),  # noqa: B008
     nome_arquivo: str = Form(...),
     modo: str = Form("catalogo"),
+    column_mapping: str | None = Form(None),
 ) -> UploadCreated:
     raw = await file.read()
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "file too large (>50MB)")
+
+    mapping: dict[str, str] | None = None
+    if column_mapping:
+        try:
+            parsed = json.loads(column_mapping)
+            if not isinstance(parsed, dict):
+                raise ValueError("column_mapping must be a JSON object")
+            mapping = {str(k): str(v) for k, v in parsed.items()}
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(400, f"invalid column_mapping: {exc}") from exc
 
     upload_id = uuid.uuid4()
     storage_dir = Path("/app/data/uploads") / str(tenant_id)
@@ -140,6 +180,7 @@ async def create_upload(
         factory,
         voyage,
         curator,
+        mapping,
     )
     return UploadCreated(upload_id=upload_id, status="pending")
 
