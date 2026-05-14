@@ -13,6 +13,15 @@ export const UploadSummary = z.object({
 });
 export type UploadSummary = z.infer<typeof UploadSummary>;
 
+export const ShortlistConfig = z.object({
+  size: z.union([z.literal(10), z.literal(20), z.literal(50), z.literal(100)]),
+  uf: z.string().length(2).nullable(),
+  municipio: z.string().nullable(),
+  only_matriz: z.boolean(),
+  min_capital: z.number().nullable(),
+});
+export type ShortlistConfig = z.infer<typeof ShortlistConfig>;
+
 export const UploadStatus = z.object({
   upload_id: z.string().uuid(),
   status: z.string(),
@@ -24,6 +33,7 @@ export const UploadStatus = z.object({
   clusters_classificados: z.number(),
   clusters_com_shortlist: z.number(),
   duracao_segundos: z.number().nullable(),
+  shortlist_config: ShortlistConfig,
 });
 export type UploadStatus = z.infer<typeof UploadStatus>;
 

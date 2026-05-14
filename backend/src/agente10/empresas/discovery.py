@@ -35,6 +35,8 @@ _QUERY = text("""
       AND situacao_cadastral = 'ATIVA'
       AND (CAST(:uf AS text) IS NULL OR uf = :uf)
       AND (CAST(:municipio AS text) IS NULL OR municipio = :municipio)
+      AND (NOT :only_matriz OR substring(cnpj, 9, 4) = '0001')
+      AND (CAST(:min_capital AS numeric) IS NULL OR capital_social >= :min_capital)
     ORDER BY primary_match DESC,
              capital_social DESC NULLS LAST,
              data_abertura ASC NULLS LAST
@@ -47,17 +49,27 @@ async def find_empresas_by_cnae(
     cnae: str,
     uf: str | None = None,
     municipio: str | None = None,
+    only_matriz: bool = False,
+    min_capital: float | None = None,
     limit: int = 25,
 ) -> list[EmpresaCandidate]:
     """Return up to ``limit`` ATIVA empresas matching ``cnae`` in primary or secondary.
 
     Ordering: primary matches first, then ``capital_social DESC`` (larger first =
     higher-capacity suppliers), then ``data_abertura ASC`` as a tiebreaker
-    (older = more stable). Filters: optional UF and município (exact match).
+    (older = more stable). Optional filters: UF + município (exact match),
+    only_matriz (CNPJ ends in 0001), min_capital (BRL).
     """
     result = await db.execute(
         _QUERY,
-        {"cnae": cnae, "uf": uf, "municipio": municipio, "limit": limit},
+        {
+            "cnae": cnae,
+            "uf": uf,
+            "municipio": municipio,
+            "only_matriz": only_matriz,
+            "min_capital": min_capital,
+            "limit": limit,
+        },
     )
     return [
         EmpresaCandidate(

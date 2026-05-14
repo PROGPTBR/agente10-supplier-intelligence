@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { apiFetch } from "./client";
-import { UploadStatus, UploadSummary } from "../types";
+import { type ShortlistConfig, UploadStatus, UploadSummary } from "../types";
 
 export function useUploadsQuery() {
   return useQuery({
@@ -51,12 +51,16 @@ export function useCreateUploadMutation() {
     mutationFn: async (args: {
       file: File;
       columnMapping?: Record<string, string>;
+      shortlistConfig?: ShortlistConfig;
     }) => {
       const fd = new FormData();
       fd.append("file", args.file);
       fd.append("nome_arquivo", args.file.name);
       if (args.columnMapping && Object.keys(args.columnMapping).length > 0) {
         fd.append("column_mapping", JSON.stringify(args.columnMapping));
+      }
+      if (args.shortlistConfig) {
+        fd.append("shortlist_config", JSON.stringify(args.shortlistConfig));
       }
       return await apiFetch<{ upload_id: string; status: string }>(
         "/api/v1/uploads",

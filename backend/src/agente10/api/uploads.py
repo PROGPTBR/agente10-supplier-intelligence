@@ -20,6 +20,7 @@ from fastapi import (
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from agente10.config.shortlist import ShortlistConfig
 from agente10.core.db import get_session_factory
 from agente10.core.tenancy import tenant_context
 from agente10.estagio1.csv_parser import CsvParseError, preview_catalog_bytes
@@ -72,6 +73,7 @@ class UploadStatus(BaseModel):
     clusters_classificados: int  # com cnae assignment
     clusters_com_shortlist: int  # shortlist_gerada=true
     duracao_segundos: float | None
+    shortlist_config: ShortlistConfig
 
 
 @router.get("/uploads", response_model=list[UploadSummary])
@@ -144,6 +146,7 @@ async def create_upload(
     nome_arquivo: str = Form(...),
     modo: str = Form("catalogo"),
     column_mapping: str | None = Form(None),
+    shortlist_config: str | None = Form(None),
 ) -> UploadCreated:
     raw = await file.read()
     if len(raw) > MAX_BYTES:
@@ -158,6 +161,14 @@ async def create_upload(
             mapping = {str(k): str(v) for k, v in parsed.items()}
         except (json.JSONDecodeError, ValueError) as exc:
             raise HTTPException(400, f"invalid column_mapping: {exc}") from exc
+
+    cfg = ShortlistConfig()
+    if shortlist_config:
+        try:
+            cfg = ShortlistConfig.model_validate_json(shortlist_config)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(400, f"invalid shortlist_config: {exc}") from exc
+    metadados = {"shortlist_config": cfg.model_dump(mode="json")}
 
     upload_id = uuid.uuid4()
     # Best-effort write to the API container's local FS (useful for backups
@@ -178,8 +189,8 @@ async def create_upload(
                 text(
                     "INSERT INTO spend_uploads "
                     "(id, tenant_id, nome_arquivo, object_storage_path, modo, "
-                    " status, file_bytes) "
-                    "VALUES (:i, :t, :n, :p, :m, 'pending', :b)"
+                    " status, file_bytes, metadados) "
+                    "VALUES (:i, :t, :n, :p, :m, 'pending', :b, CAST(:meta AS JSONB))"
                 ),
                 {
                     "i": str(upload_id),
@@ -188,6 +199,7 @@ async def create_upload(
                     "p": str(storage_path),
                     "m": modo,
                     "b": raw,
+                    "meta": json.dumps(metadados),
                 },
             )
 
@@ -214,7 +226,7 @@ async def get_upload(
             row = await session.execute(
                 text(
                     "SELECT id, status, linhas_total, linhas_classificadas, "
-                    "erro, data_upload, data_conclusao "
+                    "erro, data_upload, data_conclusao, metadados "
                     "FROM spend_uploads WHERE id = :u"
                 ),
                 {"u": str(upload_id)},
@@ -242,6 +254,8 @@ async def get_upload(
         duracao = (r.data_conclusao - r.data_upload).total_seconds()
     else:
         duracao = (datetime.now(UTC) - r.data_upload).total_seconds()
+    from agente10.config.shortlist import parse_from_metadados
+
     return UploadStatus(
         upload_id=r.id,
         status=r.status,
@@ -253,6 +267,7 @@ async def get_upload(
         clusters_classificados=int(s.com_cnae) if s else 0,
         clusters_com_shortlist=int(s.com_sl) if s else 0,
         duracao_segundos=round(duracao, 1) if duracao is not None else None,
+        shortlist_config=parse_from_metadados(r.metadados),
     )
 
 

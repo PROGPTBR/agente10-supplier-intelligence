@@ -216,12 +216,19 @@ async def get_cluster_shortlist(
     set can extend beyond the precomputed shortlist (otherwise filtering would
     often produce empty tables).
     """
+    from agente10.config.shortlist import parse_from_metadados
+
     factory = get_session_factory()
     async with factory() as session, session.begin():
         async with tenant_context(session, tenant_id):
             cnae_row = (
                 await session.execute(
-                    text("SELECT cnae, cnaes_secundarios FROM spend_clusters WHERE id = :i"),
+                    text(
+                        "SELECT c.cnae, c.cnaes_secundarios, u.metadados "
+                        "FROM spend_clusters c "
+                        "JOIN spend_uploads u ON u.id = c.upload_id "
+                        "WHERE c.id = :i"
+                    ),
                     {"i": str(cluster_id)},
                 )
             ).first()
@@ -230,6 +237,7 @@ async def get_cluster_shortlist(
             if not cnae_row.cnae:
                 return []
             cnaes_alvo = [cnae_row.cnae] + list(cnae_row.cnaes_secundarios or [])
+            view_size = parse_from_metadados(cnae_row.metadados).size
 
             if uf or municipio:
                 # Filtered: query empresas directly, group by cnpj_basico
@@ -258,7 +266,7 @@ async def get_cluster_shortlist(
                                          pc.data_abertura ASC NULLS LAST
                             ) AS rank
                         FROM per_company pc
-                        LIMIT 25
+                        LIMIT :lim
                     )
                     SELECT r.*,
                            (SELECT COUNT(*) FROM empresas e2
@@ -266,7 +274,12 @@ async def get_cluster_shortlist(
                     FROM ranked r
                     ORDER BY r.rank
                 """
-                params: dict[str, object] = {"cnaes": cnaes_alvo, "uf": uf, "m": municipio}
+                params: dict[str, object] = {
+                    "cnaes": cnaes_alvo,
+                    "uf": uf,
+                    "m": municipio,
+                    "lim": view_size,
+                }
             else:
                 # Unfiltered: use precomputed supplier_shortlists, then group
                 sql = """
@@ -296,9 +309,9 @@ async def get_cluster_shortlist(
                            ROW_NUMBER() OVER (ORDER BY pc.rank_estagio3) AS rank
                     FROM per_company pc
                     ORDER BY pc.rank_estagio3
-                    LIMIT 10
+                    LIMIT :lim
                 """
-                params = {"cnaes": cnaes_alvo, "t": str(tenant_id)}
+                params = {"cnaes": cnaes_alvo, "t": str(tenant_id), "lim": view_size}
 
             rows = (await session.execute(text(sql), params)).all()
 

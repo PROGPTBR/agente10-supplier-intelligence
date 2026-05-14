@@ -88,6 +88,37 @@ export default function UploadDetailPage({
         clustersComShortlist={upload.data.clusters_com_shortlist}
         duracaoSegundos={upload.data.duracao_segundos}
       />
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-zinc-500">Configuração da shortlist:</span>
+        <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700">
+          Top {upload.data.shortlist_config.size}
+        </span>
+        {upload.data.shortlist_config.uf && (
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-700">
+            UF: {upload.data.shortlist_config.uf}
+          </span>
+        )}
+        {upload.data.shortlist_config.municipio && (
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-700">
+            Município: {upload.data.shortlist_config.municipio}
+          </span>
+        )}
+        {upload.data.shortlist_config.only_matriz && (
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-700">
+            Apenas matriz
+          </span>
+        )}
+        {upload.data.shortlist_config.min_capital !== null && (
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-700">
+            Capital ≥{" "}
+            {upload.data.shortlist_config.min_capital.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+              maximumFractionDigits: 0,
+            })}
+          </span>
+        )}
+      </div>
       {classificationDone && (
         <div className="space-y-4">
           <h2 className="text-lg font-medium">Clusters</h2>

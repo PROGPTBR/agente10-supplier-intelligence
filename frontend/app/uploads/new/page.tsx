@@ -9,6 +9,11 @@ import {
 } from "../../../lib/api/uploads";
 import { UploadDropzone } from "../../../components/upload/UploadDropzone";
 import { ColumnMapping } from "../../../components/upload/ColumnMapping";
+import {
+  DEFAULT_SHORTLIST_CONFIG,
+  ShortlistConfigForm,
+} from "../../../components/upload/ShortlistConfigForm";
+import type { ShortlistConfig } from "../../../lib/types";
 
 export default function UploadNewPage() {
   const router = useRouter();
@@ -16,10 +21,13 @@ export default function UploadNewPage() {
   const create = useCreateUploadMutation();
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<UploadPreview | null>(null);
+  const [shortlistConfig, setShortlistConfig] = useState<ShortlistConfig>(
+    DEFAULT_SHORTLIST_CONFIG,
+  );
 
   function submitWithMapping(file: File, mapping?: Record<string, string>) {
     create.mutate(
-      { file, columnMapping: mapping },
+      { file, columnMapping: mapping, shortlistConfig },
       { onSuccess: (data) => router.push(`/uploads/${data.upload_id}`) },
     );
   }
@@ -79,6 +87,11 @@ export default function UploadNewPage() {
               </li>
             </ul>
           </div>
+          <ShortlistConfigForm
+            value={shortlistConfig}
+            onChange={setShortlistConfig}
+            disabled={isWorking}
+          />
           <UploadDropzone onFile={onFile} disabled={isWorking} />
         </>
       )}

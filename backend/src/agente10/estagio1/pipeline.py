@@ -408,8 +408,17 @@ async def _shortlist_stage(
 ) -> None:
     # Per-cluster transactions: rerank_top10 hits Anthropic (~1-3s/cluster);
     # holding one transaction for 163 clusters drops Railway's proxy connection.
+    from agente10.config.shortlist import parse_from_metadados
+    from agente10.estagio3.shortlist_generator import RETRIEVAL_POOL
+
     async with session_factory() as s0, s0.begin():
         async with tenant_context(s0, tenant_id):
+            upload_row = (
+                await s0.execute(
+                    text("SELECT metadados FROM spend_uploads WHERE id = :u"),
+                    {"u": str(upload_id)},
+                )
+            ).first()
             result = await s0.execute(
                 text(
                     "SELECT id, nome_cluster, cnae, cnaes_secundarios "
@@ -419,6 +428,9 @@ async def _shortlist_stage(
                 {"u": str(upload_id)},
             )
             clusters = result.all()
+
+    cfg = parse_from_metadados(upload_row.metadados if upload_row else None)
+    pool_size = max(cfg.size * 3, RETRIEVAL_POOL)
 
     for c in clusters:
         async with session_factory() as session, session.begin():
@@ -431,8 +443,17 @@ async def _shortlist_stage(
                     entries = await generate_shortlist(
                         c.nome_cluster,
                         cnae_target,
-                        discovery=lambda cnae: find_empresas_by_cnae(session, cnae, limit=25),
+                        discovery=lambda cnae: find_empresas_by_cnae(
+                            session,
+                            cnae,
+                            uf=cfg.uf,
+                            municipio=cfg.municipio,
+                            only_matriz=cfg.only_matriz,
+                            min_capital=cfg.min_capital,
+                            limit=pool_size,
+                        ),
                         rerank=partial(rerank_top10, curator),
+                        size=cfg.size,
                     )
                     for entry in entries:
                         await session.execute(
