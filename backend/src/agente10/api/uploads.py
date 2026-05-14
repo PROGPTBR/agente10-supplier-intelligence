@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC
 from pathlib import Path
 from uuid import UUID
 
@@ -56,6 +57,8 @@ class UploadSummary(BaseModel):
     linhas_classificadas: int
     data_upload: str
     progresso_pct: float
+    # None while pending; elapsed while processing; final on done/failed
+    duracao_segundos: float | None
 
 
 class UploadStatus(BaseModel):
@@ -68,6 +71,7 @@ class UploadStatus(BaseModel):
     clusters_total: int
     clusters_classificados: int  # com cnae assignment
     clusters_com_shortlist: int  # shortlist_gerada=true
+    duracao_segundos: float | None
 
 
 @router.get("/uploads", response_model=list[UploadSummary])
@@ -80,15 +84,24 @@ async def list_uploads(
             result = await session.execute(
                 text(
                     "SELECT id, nome_arquivo, status, linhas_total, "
-                    "linhas_classificadas, data_upload "
+                    "linhas_classificadas, data_upload, data_conclusao "
                     "FROM spend_uploads "
                     "ORDER BY data_upload DESC"
                 )
             )
             rows = result.all()
+    from datetime import datetime
+
     out: list[UploadSummary] = []
     for r in rows:
         pct = (r.linhas_classificadas / r.linhas_total * 100.0) if r.linhas_total else 0.0
+        if r.status == "pending":
+            duracao = None
+        elif r.data_conclusao is not None:
+            duracao = (r.data_conclusao - r.data_upload).total_seconds()
+        else:
+            # Still processing — show elapsed so far
+            duracao = (datetime.now(UTC) - r.data_upload).total_seconds()
         out.append(
             UploadSummary(
                 upload_id=r.id,
@@ -98,6 +111,7 @@ async def list_uploads(
                 linhas_classificadas=r.linhas_classificadas,
                 data_upload=r.data_upload.isoformat(),
                 progresso_pct=round(pct, 2),
+                duracao_segundos=round(duracao, 1) if duracao is not None else None,
             )
         )
     return out
@@ -146,10 +160,16 @@ async def create_upload(
             raise HTTPException(400, f"invalid column_mapping: {exc}") from exc
 
     upload_id = uuid.uuid4()
+    # Best-effort write to the API container's local FS (useful for backups
+    # and direct inspection). The worker container can't read this path, so
+    # we ALSO persist the bytes in Postgres for cross-container access.
     storage_dir = Path("/app/data/uploads") / str(tenant_id)
     storage_dir.mkdir(parents=True, exist_ok=True)
     storage_path = storage_dir / f"{upload_id}{Path(nome_arquivo).suffix}"
-    storage_path.write_bytes(raw)
+    try:
+        storage_path.write_bytes(raw)
+    except OSError:
+        pass  # FS write is non-critical when bytes are in Postgres
 
     factory = get_session_factory()
     async with factory() as session, session.begin():
@@ -157,8 +177,9 @@ async def create_upload(
             await session.execute(
                 text(
                     "INSERT INTO spend_uploads "
-                    "(id, tenant_id, nome_arquivo, object_storage_path, modo, status) "
-                    "VALUES (:i, :t, :n, :p, :m, 'pending')"
+                    "(id, tenant_id, nome_arquivo, object_storage_path, modo, "
+                    " status, file_bytes) "
+                    "VALUES (:i, :t, :n, :p, :m, 'pending', :b)"
                 ),
                 {
                     "i": str(upload_id),
@@ -166,6 +187,7 @@ async def create_upload(
                     "n": nome_arquivo,
                     "p": str(storage_path),
                     "m": modo,
+                    "b": raw,
                 },
             )
 
@@ -191,7 +213,8 @@ async def get_upload(
         async with tenant_context(session, tenant_id):
             row = await session.execute(
                 text(
-                    "SELECT id, status, linhas_total, linhas_classificadas, erro "
+                    "SELECT id, status, linhas_total, linhas_classificadas, "
+                    "erro, data_upload, data_conclusao "
                     "FROM spend_uploads WHERE id = :u"
                 ),
                 {"u": str(upload_id)},
@@ -211,6 +234,14 @@ async def get_upload(
             )
             s = stats.first()
     pct = (r.linhas_classificadas / r.linhas_total * 100.0) if r.linhas_total else 0.0
+    from datetime import datetime
+
+    if r.status == "pending":
+        duracao = None
+    elif r.data_conclusao is not None:
+        duracao = (r.data_conclusao - r.data_upload).total_seconds()
+    else:
+        duracao = (datetime.now(UTC) - r.data_upload).total_seconds()
     return UploadStatus(
         upload_id=r.id,
         status=r.status,
@@ -221,6 +252,7 @@ async def get_upload(
         clusters_total=int(s.total) if s else 0,
         clusters_classificados=int(s.com_cnae) if s else 0,
         clusters_com_shortlist=int(s.com_sl) if s else 0,
+        duracao_segundos=round(duracao, 1) if duracao is not None else None,
     )
 
 

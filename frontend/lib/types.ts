@@ -9,6 +9,7 @@ export const UploadSummary = z.object({
   linhas_classificadas: z.number(),
   data_upload: z.string(),
   progresso_pct: z.number(),
+  duracao_segundos: z.number().nullable(),
 });
 export type UploadSummary = z.infer<typeof UploadSummary>;
 
@@ -22,6 +23,7 @@ export const UploadStatus = z.object({
   clusters_total: z.number(),
   clusters_classificados: z.number(),
   clusters_com_shortlist: z.number(),
+  duracao_segundos: z.number().nullable(),
 });
 export type UploadStatus = z.infer<typeof UploadStatus>;
 

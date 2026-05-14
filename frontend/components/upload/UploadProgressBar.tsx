@@ -1,5 +1,6 @@
 // frontend/components/upload/UploadProgressBar.tsx
 import { Progress } from "../ui/progress";
+import { formatDuration } from "../../lib/format";
 
 export function UploadProgressBar({
   status,
@@ -8,6 +9,7 @@ export function UploadProgressBar({
   clustersTotal,
   clustersClassificados,
   clustersComShortlist,
+  duracaoSegundos,
 }: {
   status: string;
   pct: number;
@@ -15,6 +17,7 @@ export function UploadProgressBar({
   clustersTotal?: number;
   clustersClassificados?: number;
   clustersComShortlist?: number;
+  duracaoSegundos?: number | null;
 }) {
   const showCounters = typeof clustersTotal === "number" && clustersTotal > 0;
   const shortlistPct =
@@ -34,7 +37,16 @@ export function UploadProgressBar({
               </span>
             )}
           </span>
-          <span className="text-zinc-500">{pct.toFixed(0)}%</span>
+          <span className="text-zinc-500">
+            {pct.toFixed(0)}%
+            {duracaoSegundos != null && (
+              <span className="ml-2 text-xs">
+                {status === "done"
+                  ? `concluído em ${formatDuration(duracaoSegundos)}`
+                  : `tempo decorrido: ${formatDuration(duracaoSegundos)}`}
+              </span>
+            )}
+          </span>
         </div>
         <Progress value={pct} aria-label="Progresso de classificação" />
         <p className="text-xs text-zinc-500">Classificação CNAE das linhas</p>

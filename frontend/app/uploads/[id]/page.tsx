@@ -48,6 +48,7 @@ export default function UploadDetailPage({
         clustersTotal={upload.data.clusters_total}
         clustersClassificados={upload.data.clusters_classificados}
         clustersComShortlist={upload.data.clusters_com_shortlist}
+        duracaoSegundos={upload.data.duracao_segundos}
       />
       {classificationDone && (
         <div className="space-y-4">

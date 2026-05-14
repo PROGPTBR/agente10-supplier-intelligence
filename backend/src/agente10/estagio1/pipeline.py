@@ -38,8 +38,12 @@ async def _set_status(
     status: str,
     erro: str | None = None,
 ) -> None:
+    # Record data_conclusao on terminal states so the UI can show total duration.
+    sets = "status = :s, erro = :e"
+    if status in ("done", "failed"):
+        sets += ", data_conclusao = NOW()"
     await session.execute(
-        text("UPDATE spend_uploads SET status = :s, erro = :e WHERE id = :id"),
+        text(f"UPDATE spend_uploads SET {sets} WHERE id = :id"),
         {"s": status, "e": erro, "id": str(upload_id)},
     )
 
@@ -59,8 +63,30 @@ async def _parse_stage(
         log.info("parse stage: %d rows already present, skipping", existing)
         return int(existing)
 
-    raw = csv_path.read_bytes()
+    # Worker runs in a different container than the API, so the local
+    # csv_path may not exist. Fall back to file_bytes stored in Postgres.
+    if csv_path.exists():
+        raw = csv_path.read_bytes()
+    else:
+        log.info("parse stage: csv_path %s missing, reading file_bytes from DB", csv_path)
+        row = await session.execute(
+            text("SELECT file_bytes, nome_arquivo FROM spend_uploads WHERE id = :u"),
+            {"u": str(upload_id)},
+        )
+        r = row.first()
+        if not r or not r.file_bytes:
+            raise RuntimeError(f"upload {upload_id} has no file_bytes and {csv_path} doesn't exist")
+        raw = bytes(r.file_bytes)
+        # Override csv_path.name for filename-based format detection (xlsx vs csv)
+        csv_path = Path(r.nome_arquivo)
     rows = list(parse_catalog_bytes(raw, csv_path.name, overrides=column_mapping))
+
+    # Free the file bytes from Postgres now that we have spend_linhas — retries
+    # skip parse when linhas exist, so the bytes are no longer needed.
+    await session.execute(
+        text("UPDATE spend_uploads SET file_bytes = NULL WHERE id = :u"),
+        {"u": str(upload_id)},
+    )
     for row in rows:
         await session.execute(
             text("""

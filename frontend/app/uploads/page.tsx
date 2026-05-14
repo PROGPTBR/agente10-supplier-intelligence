@@ -8,6 +8,7 @@ import {
 } from "../../lib/api/uploads";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { formatDuration } from "../../lib/format";
 
 const STATUS_VARIANT = {
   done: "default",
@@ -59,6 +60,7 @@ export default function UploadsListPage() {
               <th className="border-b border-zinc-200 pb-2">Status</th>
               <th className="border-b border-zinc-200 pb-2">Linhas</th>
               <th className="border-b border-zinc-200 pb-2">Progresso</th>
+              <th className="border-b border-zinc-200 pb-2">Duração</th>
               <th className="border-b border-zinc-200 pb-2">Data</th>
               <th className="border-b border-zinc-200 pb-2 text-right">
                 Ações
@@ -95,6 +97,9 @@ export default function UploadsListPage() {
                 </td>
                 <td className="border-b border-zinc-100 py-3 text-zinc-700">
                   {u.progresso_pct.toFixed(0)}%
+                </td>
+                <td className="border-b border-zinc-100 py-3 text-zinc-700">
+                  {formatDuration(u.duracao_segundos)}
                 </td>
                 <td className="border-b border-zinc-100 py-3 text-zinc-500">
                   {new Date(u.data_upload).toLocaleString("pt-BR")}
