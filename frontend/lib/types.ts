@@ -61,6 +61,7 @@ export const ClusterDetail = z.object({
 export type ClusterDetail = z.infer<typeof ClusterDetail>;
 
 export const ShortlistEntry = z.object({
+  cnpj_basico: z.string(),
   cnpj: z.string(),
   razao_social: z.string(),
   nome_fantasia: z.string().nullable(),
@@ -69,8 +70,24 @@ export const ShortlistEntry = z.object({
   municipio: z.string().nullable(),
   data_abertura: z.string().nullable(),
   rank_estagio3: z.number(),
+  filiais_count: z.number(),
 });
 export type ShortlistEntry = z.infer<typeof ShortlistEntry>;
+
+export const Filial = z.object({
+  cnpj: z.string(),
+  razao_social: z.string(),
+  nome_fantasia: z.string().nullable(),
+  capital_social: z.number().nullable(),
+  uf: z.string().nullable(),
+  municipio: z.string().nullable(),
+  cep: z.string().nullable(),
+  endereco: z.string().nullable(),
+  data_abertura: z.string().nullable(),
+  situacao_cadastral: z.string().nullable(),
+  is_matriz: z.boolean(),
+});
+export type Filial = z.infer<typeof Filial>;
 
 export const DashboardStats = z.object({
   uploads_total: z.number(),

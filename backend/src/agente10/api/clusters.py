@@ -50,6 +50,14 @@ class ClusterDetail(BaseModel):
 
 
 class ShortlistEntryView(BaseModel):
+    """One supplier row in the shortlist — grouped by cnpj_basico (8-digit company root).
+
+    `cnpj` is the representative filial (matriz when present, else highest capital);
+    `filiais_count` is the total filiais of this company present in our `empresas`
+    table (limited by the pilot trim — see project memory).
+    """
+
+    cnpj_basico: str
     cnpj: str
     razao_social: str
     nome_fantasia: str | None
@@ -58,6 +66,21 @@ class ShortlistEntryView(BaseModel):
     municipio: str | None
     data_abertura: date_t | None
     rank_estagio3: int
+    filiais_count: int
+
+
+class FilialView(BaseModel):
+    cnpj: str
+    razao_social: str
+    nome_fantasia: str | None
+    capital_social: float | None
+    uf: str | None
+    municipio: str | None
+    cep: str | None
+    endereco: str | None
+    data_abertura: date_t | None
+    situacao_cadastral: str | None
+    is_matriz: bool
 
 
 class ClusterPatch(BaseModel):
@@ -176,13 +199,22 @@ async def get_cluster(
 async def get_cluster_shortlist(
     cluster_id: UUID,
     tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+    uf: str | None = Query(default=None, max_length=2),
+    municipio: str | None = Query(default=None),
 ) -> list[ShortlistEntryView]:
+    """Top suppliers for a cluster, grouped by cnpj_basico (one row per company).
+
+    Without filters: source is supplier_shortlists (the curator's ranked top-10).
+    With UF/município filters: re-queries empresas table directly so the result
+    set can extend beyond the precomputed shortlist (otherwise filtering would
+    often produce empty tables).
+    """
     factory = get_session_factory()
     async with factory() as session, session.begin():
         async with tenant_context(session, tenant_id):
             cnae_row = (
                 await session.execute(
-                    text("SELECT cnae, cnaes_secundarios " "FROM spend_clusters WHERE id = :i"),
+                    text("SELECT cnae, cnaes_secundarios FROM spend_clusters WHERE id = :i"),
                     {"i": str(cluster_id)},
                 )
             ).first()
@@ -190,32 +222,82 @@ async def get_cluster_shortlist(
                 raise HTTPException(404, "cluster not found")
             if not cnae_row.cnae:
                 return []
-            # Query suppliers across primary CNAE + all secondaries; dedupe by CNPJ.
             cnaes_alvo = [cnae_row.cnae] + list(cnae_row.cnaes_secundarios or [])
-            rows = (
-                await session.execute(
-                    text("""
-                        WITH deduped AS (
-                            SELECT DISTINCT ON (s.cnpj_fornecedor)
-                                s.cnpj_fornecedor AS cnpj,
-                                s.rank_estagio3
-                            FROM supplier_shortlists s
-                            WHERE s.cnae = ANY(:cnaes) AND s.tenant_id = :t
-                            ORDER BY s.cnpj_fornecedor, s.rank_estagio3
-                        )
-                        SELECT d.cnpj, d.rank_estagio3,
-                               e.razao_social, e.nome_fantasia, e.capital_social,
-                               e.uf, e.municipio, e.data_abertura
-                        FROM deduped d
-                        JOIN empresas e ON e.cnpj = d.cnpj
-                        ORDER BY d.rank_estagio3
-                        LIMIT 10
-                        """),
-                    {"cnaes": cnaes_alvo, "t": str(tenant_id)},
-                )
-            ).all()
+
+            if uf or municipio:
+                # Filtered: query empresas directly, group by cnpj_basico
+                sql = """
+                    WITH per_company AS (
+                        SELECT DISTINCT ON (substring(e.cnpj, 1, 8))
+                            substring(e.cnpj, 1, 8) AS cnpj_basico,
+                            e.cnpj, e.razao_social, e.nome_fantasia,
+                            e.capital_social, e.uf, e.municipio, e.data_abertura
+                        FROM empresas e
+                        WHERE (e.cnae_primario = ANY(:cnaes)
+                               OR e.cnaes_secundarios && :cnaes)
+                          AND e.situacao_cadastral = 'ATIVA'
+                          AND (CAST(:uf AS text) IS NULL OR e.uf = :uf)
+                          AND (CAST(:m AS text) IS NULL OR e.municipio = :m)
+                        ORDER BY substring(e.cnpj, 1, 8),
+                                 CASE WHEN substring(e.cnpj, 9, 4) = '0001' THEN 0 ELSE 1 END,
+                                 e.capital_social DESC NULLS LAST,
+                                 e.data_abertura ASC NULLS LAST
+                    ),
+                    ranked AS (
+                        SELECT
+                            pc.*,
+                            ROW_NUMBER() OVER (
+                                ORDER BY pc.capital_social DESC NULLS LAST,
+                                         pc.data_abertura ASC NULLS LAST
+                            ) AS rank
+                        FROM per_company pc
+                        LIMIT 25
+                    )
+                    SELECT r.*,
+                           (SELECT COUNT(*) FROM empresas e2
+                            WHERE substring(e2.cnpj, 1, 8) = r.cnpj_basico) AS filiais_count
+                    FROM ranked r
+                    ORDER BY r.rank
+                """
+                params: dict[str, object] = {"cnaes": cnaes_alvo, "uf": uf, "m": municipio}
+            else:
+                # Unfiltered: use precomputed supplier_shortlists, then group
+                sql = """
+                    WITH base AS (
+                        SELECT DISTINCT ON (s.cnpj_fornecedor)
+                            s.cnpj_fornecedor AS cnpj, s.rank_estagio3
+                        FROM supplier_shortlists s
+                        WHERE s.cnae = ANY(:cnaes) AND s.tenant_id = :t
+                        ORDER BY s.cnpj_fornecedor, s.rank_estagio3
+                    ),
+                    per_company AS (
+                        SELECT DISTINCT ON (substring(e.cnpj, 1, 8))
+                            substring(e.cnpj, 1, 8) AS cnpj_basico,
+                            e.cnpj, e.razao_social, e.nome_fantasia,
+                            e.capital_social, e.uf, e.municipio, e.data_abertura,
+                            b.rank_estagio3
+                        FROM base b
+                        JOIN empresas e ON substring(e.cnpj, 1, 8) = substring(b.cnpj, 1, 8)
+                        ORDER BY substring(e.cnpj, 1, 8),
+                                 CASE WHEN substring(e.cnpj, 9, 4) = '0001' THEN 0 ELSE 1 END,
+                                 e.capital_social DESC NULLS LAST,
+                                 e.data_abertura ASC NULLS LAST
+                    )
+                    SELECT pc.*,
+                           (SELECT COUNT(*) FROM empresas e2
+                            WHERE substring(e2.cnpj, 1, 8) = pc.cnpj_basico) AS filiais_count,
+                           ROW_NUMBER() OVER (ORDER BY pc.rank_estagio3) AS rank
+                    FROM per_company pc
+                    ORDER BY pc.rank_estagio3
+                    LIMIT 10
+                """
+                params = {"cnaes": cnaes_alvo, "t": str(tenant_id)}
+
+            rows = (await session.execute(text(sql), params)).all()
+
     return [
         ShortlistEntryView(
+            cnpj_basico=r.cnpj_basico,
             cnpj=r.cnpj,
             razao_social=r.razao_social,
             nome_fantasia=r.nome_fantasia,
@@ -223,7 +305,69 @@ async def get_cluster_shortlist(
             uf=r.uf,
             municipio=r.municipio,
             data_abertura=r.data_abertura,
-            rank_estagio3=r.rank_estagio3,
+            rank_estagio3=int(r.rank if uf or municipio else r.rank_estagio3),
+            filiais_count=int(r.filiais_count),
+        )
+        for r in rows
+    ]
+
+
+@router.get(
+    "/clusters/{cluster_id}/empresa/{cnpj_basico}/filiais",
+    response_model=list[FilialView],
+)
+async def get_company_filiais(
+    cluster_id: UUID,
+    cnpj_basico: str,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> list[FilialView]:
+    """All filiais of a company (same first 8 CNPJ digits) present in our empresas
+    table. Matriz (filial code 0001) is returned first.
+
+    Note: the pilot's empresas trim only loaded subsets of CNAEs, so this may
+    return fewer filiais than reality. The trim is documented in project memory.
+    """
+    if len(cnpj_basico) != 8 or not cnpj_basico.isdigit():
+        raise HTTPException(400, "cnpj_basico must be 8 digits")
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            # Validate cluster exists (RLS enforced)
+            exists = (
+                await session.execute(
+                    text("SELECT 1 FROM spend_clusters WHERE id = :i"),
+                    {"i": str(cluster_id)},
+                )
+            ).first()
+            if not exists:
+                raise HTTPException(404, "cluster not found")
+            rows = (
+                await session.execute(
+                    text("""
+                        SELECT cnpj, razao_social, nome_fantasia, capital_social,
+                               uf, municipio, cep, endereco, data_abertura,
+                               situacao_cadastral,
+                               substring(cnpj, 9, 4) = '0001' AS is_matriz
+                        FROM empresas
+                        WHERE substring(cnpj, 1, 8) = :b
+                        ORDER BY is_matriz DESC, capital_social DESC NULLS LAST, cnpj
+                    """),
+                    {"b": cnpj_basico},
+                )
+            ).all()
+    return [
+        FilialView(
+            cnpj=r.cnpj,
+            razao_social=r.razao_social,
+            nome_fantasia=r.nome_fantasia,
+            capital_social=float(r.capital_social) if r.capital_social is not None else None,
+            uf=r.uf,
+            municipio=r.municipio,
+            cep=r.cep,
+            endereco=r.endereco,
+            data_abertura=r.data_abertura,
+            situacao_cadastral=r.situacao_cadastral,
+            is_matriz=bool(r.is_matriz),
         )
         for r in rows
     ]

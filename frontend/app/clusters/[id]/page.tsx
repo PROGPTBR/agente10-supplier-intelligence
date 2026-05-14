@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import {
   useClusterDetailQuery,
   useShortlistQuery,
 } from "../../../lib/api/clusters";
 import { ClusterReviewForm } from "../../../components/cluster/ClusterReviewForm";
 import { ShortlistTable } from "../../../components/shortlist/ShortlistTable";
+import {
+  ShortlistFilters,
+  type ShortlistFilterState,
+} from "../../../components/shortlist/ShortlistFilters";
 
 export default function ClusterDetailPage({
   params,
@@ -16,7 +20,14 @@ export default function ClusterDetailPage({
 }) {
   const { id } = use(params);
   const cluster = useClusterDetailQuery(id);
-  const shortlist = useShortlistQuery(id, cluster.data?.shortlist_gerada);
+  const [filters, setFilters] = useState<ShortlistFilterState>({
+    uf: "",
+    municipio: "",
+  });
+  const shortlist = useShortlistQuery(id, cluster.data?.shortlist_gerada, {
+    uf: filters.uf || undefined,
+    municipio: filters.municipio || undefined,
+  });
 
   if (cluster.isLoading)
     return <p className="text-sm text-zinc-500">Carregando…</p>;
@@ -35,13 +46,24 @@ export default function ClusterDetailPage({
       </div>
       <ClusterReviewForm cluster={cluster.data} />
       <section className="space-y-3">
-        <h2 className="text-lg font-medium">
-          Shortlist de fornecedores (top 10)
-        </h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-lg font-medium">
+            Shortlist de fornecedores
+            {filters.uf || filters.municipio
+              ? " (filtrado)"
+              : " (top 10 por capital)"}
+          </h2>
+          <ShortlistFilters value={filters} onChange={setFilters} />
+        </div>
         {cluster.data.shortlist_gerada === false && (
           <p className="text-xs text-amber-700">Regenerando shortlist…</p>
         )}
-        {shortlist.data ? <ShortlistTable entries={shortlist.data} /> : null}
+        {shortlist.isLoading && (
+          <p className="text-xs text-zinc-500">Carregando fornecedores…</p>
+        )}
+        {shortlist.data ? (
+          <ShortlistTable clusterId={id} entries={shortlist.data} />
+        ) : null}
       </section>
     </div>
   );

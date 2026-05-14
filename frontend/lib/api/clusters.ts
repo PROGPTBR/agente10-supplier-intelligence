@@ -2,7 +2,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { apiFetch } from "./client";
-import { ClusterDetail, ClusterSummary, ShortlistEntry } from "../types";
+import {
+  ClusterDetail,
+  ClusterSummary,
+  Filial,
+  ShortlistEntry,
+} from "../types";
 
 export function useClustersQuery(
   uploadId: string,
@@ -40,15 +45,41 @@ export function useClusterDetailQuery(clusterId: string) {
 export function useShortlistQuery(
   clusterId: string,
   shortlistGerada: boolean | undefined,
+  filters: { uf?: string; municipio?: string } = {},
 ) {
+  const params = new URLSearchParams();
+  if (filters.uf) params.set("uf", filters.uf);
+  if (filters.municipio) params.set("municipio", filters.municipio);
+  const query = params.toString();
   return useQuery({
-    queryKey: ["clusters", clusterId, "shortlist"],
+    queryKey: ["clusters", clusterId, "shortlist", filters],
     queryFn: async () =>
       z
         .array(ShortlistEntry)
-        .parse(await apiFetch(`/api/v1/clusters/${clusterId}/shortlist`)),
+        .parse(
+          await apiFetch(
+            `/api/v1/clusters/${clusterId}/shortlist${
+              query ? `?${query}` : ""
+            }`,
+          ),
+        ),
     enabled: !!clusterId,
     refetchInterval: shortlistGerada === false ? 2000 : false,
+  });
+}
+
+export function useFiliaisQuery(clusterId: string, cnpjBasico: string | null) {
+  return useQuery({
+    queryKey: ["clusters", clusterId, "filiais", cnpjBasico],
+    queryFn: async () =>
+      z
+        .array(Filial)
+        .parse(
+          await apiFetch(
+            `/api/v1/clusters/${clusterId}/empresa/${cnpjBasico}/filiais`,
+          ),
+        ),
+    enabled: !!clusterId && !!cnpjBasico,
   });
 }
 
