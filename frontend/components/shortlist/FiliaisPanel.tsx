@@ -1,6 +1,20 @@
 "use client";
 
 import { useFiliaisQuery } from "../../lib/api/clusters";
+import cnaeData from "../../lib/cnae-taxonomy.json";
+
+interface CnaeRef {
+  codigo: string;
+  denominacao: string;
+}
+
+const CNAE_BY_CODE = new Map<string, string>(
+  (cnaeData as CnaeRef[]).map((c) => [c.codigo, c.denominacao]),
+);
+
+function denomFor(code: string): string {
+  return CNAE_BY_CODE.get(code) ?? "(descrição não encontrada)";
+}
 
 function formatBRL(n: number | null): string {
   if (n === null) return "—";
@@ -9,6 +23,43 @@ function formatBRL(n: number | null): string {
     currency: "BRL",
     maximumFractionDigits: 0,
   });
+}
+
+function CnaeList({
+  primario,
+  secundarios,
+}: {
+  primario: string | null;
+  secundarios: string[];
+}) {
+  if (!primario && secundarios.length === 0) return <span>—</span>;
+  return (
+    <div className="space-y-0.5">
+      {primario && (
+        <div title={denomFor(primario)}>
+          <span className="rounded bg-emerald-100 px-1 py-0.5 text-emerald-800">
+            primário
+          </span>{" "}
+          <span className="font-mono">{primario}</span>{" "}
+          <span className="text-zinc-500">— {denomFor(primario)}</span>
+        </div>
+      )}
+      {secundarios.length > 0 && (
+        <div className="flex flex-wrap items-baseline gap-1">
+          <span className="text-zinc-500">secundários:</span>
+          {secundarios.map((c) => (
+            <span
+              key={c}
+              title={denomFor(c)}
+              className="rounded bg-zinc-200 px-1 py-0.5 font-mono"
+            >
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function FiliaisPanel({
@@ -51,11 +102,12 @@ export function FiliaisPanel({
               <th className="pb-1 text-left">UF / Município</th>
               <th className="pb-1 text-left">Capital</th>
               <th className="pb-1 text-left">Situação</th>
+              <th className="pb-1 text-left">CNAEs</th>
             </tr>
           </thead>
           <tbody>
             {filiais.data.map((f) => (
-              <tr key={f.cnpj} className="border-t border-zinc-200">
+              <tr key={f.cnpj} className="border-t border-zinc-200 align-top">
                 <td className="py-1">
                   {f.is_matriz ? (
                     <span className="rounded bg-emerald-100 px-1 py-0.5 text-emerald-800">
@@ -85,6 +137,12 @@ export function FiliaisPanel({
                 </td>
                 <td className="py-1 text-zinc-700">
                   {f.situacao_cadastral ?? "—"}
+                </td>
+                <td className="py-1 text-zinc-700">
+                  <CnaeList
+                    primario={f.cnae_primario}
+                    secundarios={f.cnaes_secundarios}
+                  />
                 </td>
               </tr>
             ))}

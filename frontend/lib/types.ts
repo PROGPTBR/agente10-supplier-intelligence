@@ -96,6 +96,8 @@ export const Filial = z.object({
   data_abertura: z.string().nullable(),
   situacao_cadastral: z.string().nullable(),
   is_matriz: z.boolean(),
+  cnae_primario: z.string().nullable(),
+  cnaes_secundarios: z.array(z.string()).default([]),
 });
 export type Filial = z.infer<typeof Filial>;
 

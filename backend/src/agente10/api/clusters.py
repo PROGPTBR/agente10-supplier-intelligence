@@ -88,6 +88,8 @@ class FilialView(BaseModel):
     data_abertura: date_t | None
     situacao_cadastral: str | None
     is_matriz: bool
+    cnae_primario: str | None
+    cnaes_secundarios: list[str]
 
 
 class ClusterPatch(BaseModel):
@@ -368,6 +370,7 @@ async def get_company_filiais(
                         SELECT cnpj, razao_social, nome_fantasia, capital_social,
                                uf, municipio, cep, endereco, data_abertura,
                                situacao_cadastral,
+                               cnae_primario, cnaes_secundarios,
                                substring(cnpj, 9, 4) = '0001' AS is_matriz
                         FROM empresas
                         WHERE substring(cnpj, 1, 8) = :b
@@ -389,6 +392,8 @@ async def get_company_filiais(
             data_abertura=r.data_abertura,
             situacao_cadastral=r.situacao_cadastral,
             is_matriz=bool(r.is_matriz),
+            cnae_primario=r.cnae_primario,
+            cnaes_secundarios=list(r.cnaes_secundarios or []),
         )
         for r in rows
     ]
