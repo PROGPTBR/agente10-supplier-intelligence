@@ -45,7 +45,7 @@ def test_primary_in_fabricacao_keeps_primary_and_adds_two_siblings():
     assert FAB_CABOS not in s  # primary never duplicated
 
 
-def test_primary_in_atacado_swaps_to_fabricacao():
+def test_primary_in_atacado_keeps_primary_adds_fab_and_varejo_as_secondaries():
     primary = ATAC_MOVEIS
     secs = []
     siblings = {
@@ -54,13 +54,14 @@ def test_primary_in_atacado_swaps_to_fabricacao():
         "varejo": VAR_MOVEIS,
     }
     p, s = normalize_to_fabricacao_first(primary, secs, siblings)
-    assert p == FAB_MOVEIS, "fabricacao should be promoted to primary"
-    assert ATAC_MOVEIS in s, "original primary demoted to secondary"
+    # Classifier's primary is preserved — we only enrich the secondaries.
+    assert p == ATAC_MOVEIS
+    assert FAB_MOVEIS in s
     assert VAR_MOVEIS in s
-    assert FAB_MOVEIS not in s
+    assert ATAC_MOVEIS not in s
 
 
-def test_primary_in_varejo_swaps_to_fabricacao_and_demotes_varejo():
+def test_primary_in_varejo_keeps_primary_adds_fab_and_atacado_as_secondaries():
     primary = VAR_MOVEIS
     secs = []
     siblings = {
@@ -69,9 +70,10 @@ def test_primary_in_varejo_swaps_to_fabricacao_and_demotes_varejo():
         "atacado": ATAC_MOVEIS,
     }
     p, s = normalize_to_fabricacao_first(primary, secs, siblings)
-    assert p == FAB_MOVEIS
-    assert VAR_MOVEIS in s
+    assert p == VAR_MOVEIS
+    assert FAB_MOVEIS in s
     assert ATAC_MOVEIS in s
+    assert VAR_MOVEIS not in s
 
 
 def test_no_siblings_above_threshold_returns_unchanged():
@@ -123,7 +125,7 @@ def test_secondary_list_capped_at_max():
     assert len(s) <= 4
 
 
-def test_swap_demotes_original_before_curator_secs():
+def test_atacado_primary_curator_secs_preserved_then_tier_siblings():
     primary = ATAC_MAT_ELETRICO
     curator_secs = ["8888888"]
     siblings = {
@@ -132,6 +134,8 @@ def test_swap_demotes_original_before_curator_secs():
         "varejo": VAR_MAT_ELETRICO,
     }
     p, s = normalize_to_fabricacao_first(primary, curator_secs, siblings)
-    assert p == FAB_CABOS
-    # Demoted original primary comes first so the relationship survives capping
-    assert s[0] == ATAC_MAT_ELETRICO
+    # Primary kept; curator secs come first so they always survive the cap
+    assert p == ATAC_MAT_ELETRICO
+    assert s[0] == "8888888"
+    assert FAB_CABOS in s
+    assert VAR_MAT_ELETRICO in s

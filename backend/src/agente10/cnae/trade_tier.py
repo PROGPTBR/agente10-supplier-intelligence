@@ -121,15 +121,20 @@ def normalize_to_fabricacao_first(
     siblings: dict[Tier, str | None],
 ) -> tuple[str, list[str]]:
     """Combine the classifier's primary + curator-supplied secondaries with the
-    trade-tier siblings, preferring fabricação as the primary when available.
+    trade-tier siblings.
 
-    - If `siblings == {}` (primary is outside C/46/47), returns inputs unchanged
-      so service/consultoria clusters are not touched.
-    - Curator secondaries are preserved.
-    - When a fabricação sibling exists and the primary isn't already fabricação,
-      the fabricação code becomes primary and the original primary is demoted
-      to the secondary list.
-    - Dedups and caps the secondary list at MAX_SECONDARIES.
+    Policy (refined to reduce LLM cost and respect classifier intent):
+    - If `siblings == {}` (primary outside C/46/47), inputs unchanged.
+    - **The classifier's primary is never swapped.** If the curator picked
+      atacado/varejo it had context the rule doesn't (e.g. cluster is genuinely
+      retail/wholesale spend, no need to force-promote fabricação). We only
+      enrich the secondaries with the matching tier siblings.
+    - For a fabricação primary: append top atacado + top varejo siblings.
+    - For an atacado/varejo primary: append top fabricação + the third-tier
+      sibling, so the shortlist still pulls suppliers from the other tiers
+      without disturbing the primary classification.
+    - Curator secondaries come first (they survive the cap); tier siblings
+      are appended after. Dedup + cap at MAX_SECONDARIES.
     """
     if not siblings:
         return primary, list(secondaries)
@@ -138,33 +143,19 @@ def normalize_to_fabricacao_first(
     atac = siblings.get("atacado")
     var = siblings.get("varejo")
 
-    if fab is not None and fab != primary:
-        new_primary = fab
-        # Original primary is demoted ahead of curator picks so the relationship
-        # is preserved if the secondary cap evicts older entries.
-        ordered = [primary]
-        if atac and atac != fab and atac != primary:
-            ordered.append(atac)
-        if var and var != fab and var != primary:
-            ordered.append(var)
-        ordered.extend(secondaries)
-    else:
-        new_primary = primary
-        ordered = list(secondaries)
-        for sibling in (fab, atac, var):
-            if sibling is None:
-                continue
-            if sibling == new_primary:
-                continue
-            ordered.append(sibling)
+    ordered = list(secondaries)
+    for sibling in (fab, atac, var):
+        if sibling is None or sibling == primary:
+            continue
+        ordered.append(sibling)
 
     seen: set[str] = set()
     deduped: list[str] = []
     for code in ordered:
-        if code == new_primary or code in seen:
+        if code == primary or code in seen:
             continue
         seen.add(code)
         deduped.append(code)
         if len(deduped) >= MAX_SECONDARIES:
             break
-    return new_primary, deduped
+    return primary, deduped

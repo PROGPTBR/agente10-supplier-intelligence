@@ -1,4 +1,15 @@
-"""LLM curator: rerank find_empresas_by_cnae candidates → top-10."""
+"""Supplier shortlist reranker — Voyage rerank-2.5 (no LLM).
+
+Earlier versions called Claude Haiku per cluster × per CNAE, which dominated
+the per-upload cost. Voyage rerank-2.5 is two orders of magnitude cheaper
+per call ($0.05/MTok vs Haiku's $1+$5) and gives equally usable ordering for
+"sort these supplier candidates by how well they fit this category".
+
+The function signature is kept compatible with the previous Haiku version
+(it still accepts a `CuratorClient` as the first arg, ignored) so the call
+sites in `_shortlist_stage` and `regenerate_shortlist_for_cluster` don't
+need to thread a new Voyage handle.
+"""
 
 from __future__ import annotations
 
@@ -8,52 +19,60 @@ from pydantic import BaseModel
 
 from agente10.curator.client import CuratorClient
 from agente10.empresas.discovery import EmpresaCandidate
-
-_SYSTEM = """\
-Você é um especialista em supply chain B2B Brasil. Dado o nome de uma
-categoria de materiais/serviços e até 25 fornecedores candidatos
-(razão social, capital social, UF, idade), retorne os 10 melhores em
-ordem decrescente de relevância como JSON puro:
-
-[
-  {"cnpj": "<14 digitos>", "rank": <1-10>, "reasoning": "<breve>"},
-  ...
-]
-
-Regras:
-- Exatamente 10 itens (ou menos se input tem <10).
-- Cada cnpj DEVE estar entre os candidatos.
-- Priorize fornecedores claramente especializados na categoria, com
-  capital social compatível com o ticket esperado.
-"""
+from agente10.integrations.voyage import VoyageClient
 
 
 class RankedSupplier(BaseModel):
     cnpj: str
     rank: int
-    reasoning: str
+    reasoning: str = ""
 
 
-def _format_user_prompt(cluster_name: str, candidates: list[EmpresaCandidate]) -> str:
-    today = date.today()
-    lines = [f"Categoria: {cluster_name}", "", "Candidatos:"]
-    for i, c in enumerate(candidates, start=1):
-        idade = (today - c.data_abertura).days // 365 if c.data_abertura else "N/A"
-        lines.append(f"{i}. {c.cnpj} — {c.razao_social} | UF={c.uf} | idade={idade}a")
-    return "\n".join(lines)
+def _doc_for_candidate(c: EmpresaCandidate, today: date) -> str:
+    """Build the rerank document for one candidate. Compact but information-
+    dense: name + size + geography + age — the four signals that drive a
+    procurement analyst's gut ranking."""
+    idade = (today - c.data_abertura).days // 365 if c.data_abertura else None
+    parts = [c.razao_social]
+    if c.nome_fantasia and c.nome_fantasia != c.razao_social:
+        parts.append(c.nome_fantasia)
+    parts.append(f"UF: {c.uf or 'N/A'}")
+    if c.municipio:
+        parts.append(c.municipio)
+    if idade is not None:
+        parts.append(f"{idade} anos de mercado")
+    return " · ".join(parts)
+
+
+def _query_for_cluster(cluster_name: str) -> str:
+    """Short query that conveys the procurement intent. rerank-2.5 weighs the
+    query against each doc — we frame it as a B2B sourcing question."""
+    return f"Fornecedor B2B Brasil para: {cluster_name}"
 
 
 async def rerank_top10(
-    client: CuratorClient,
+    _client: CuratorClient,  # kept for signature compatibility — not used
     cluster_name: str,
     candidates: list[EmpresaCandidate],
 ) -> list[RankedSupplier]:
-    """Ask curator to rerank to top-10. Returns sorted by rank ascending."""
-    user = _format_user_prompt(cluster_name, candidates)
-    raw = await client.ask_json(_SYSTEM, user, max_tokens=2048)
-    ranked = [RankedSupplier.model_validate(item) for item in raw]
-    valid_cnpjs = {c.cnpj for c in candidates}
-    bad = [r.cnpj for r in ranked if r.cnpj not in valid_cnpjs]
-    if bad:
-        raise ValueError(f"reranker returned cnpjs not in input candidates: {bad}")
-    return sorted(ranked, key=lambda r: r.rank)
+    """Rerank candidates by Voyage rerank-2.5. Returns ranked list sorted by
+    relevance descending. Idempotent — same input always yields same output."""
+    if not candidates:
+        return []
+    voyage = VoyageClient()
+    today = date.today()
+    docs = [_doc_for_candidate(c, today) for c in candidates]
+    pairs = await voyage.rerank(
+        query=_query_for_cluster(cluster_name),
+        documents=docs,
+        top_k=len(candidates),
+    )
+    out: list[RankedSupplier] = []
+    for rank, (idx, _score) in enumerate(pairs, start=1):
+        out.append(
+            RankedSupplier(
+                cnpj=candidates[idx].cnpj,
+                rank=rank,
+            )
+        )
+    return out

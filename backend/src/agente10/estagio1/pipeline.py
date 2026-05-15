@@ -226,11 +226,11 @@ async def _cnae_stage(
                     sample_lines=sample_lines,
                 )
 
-                # After CNAE is known, refine the cluster name into something
-                # broader and aligned with the CNAE's domain (only for
-                # high-confidence assignments — manual_pending stays raw).
+                # After CNAE is known, refine the cluster name. Skip cache hits
+                # — the raw nome_cluster reads fine, and the LLM call is the
+                # single biggest avoidable cost per upload retry.
                 nome_refinado: str | None = None
-                if outcome.cnae_metodo in ("retrieval", "curator", "cache"):
+                if outcome.cnae_metodo in ("retrieval", "curator"):
                     try:
                         denom_row = await session.execute(
                             text("SELECT denominacao FROM cnae_taxonomy WHERE codigo = :c"),
@@ -440,6 +440,18 @@ async def _shortlist_stage(
                 # GET endpoint already dedupes across CNAEs at query time.
                 cnaes_alvo = [c.cnae] + list(c.cnaes_secundarios or [])
                 for cnae_target in cnaes_alvo:
+                    # Delta-skip: another cluster may already have a full
+                    # shortlist for this CNAE; supplier_shortlists is keyed by
+                    # (tenant_id, cnae, cnpj) so we can reuse it as-is.
+                    existing = await session.scalar(
+                        text(
+                            "SELECT COUNT(*) FROM supplier_shortlists "
+                            "WHERE cnae = :c AND tenant_id = :t"
+                        ),
+                        {"c": cnae_target, "t": str(tenant_id)},
+                    )
+                    if existing and existing >= cfg.size:
+                        continue
                     entries = await generate_shortlist(
                         c.nome_cluster,
                         cnae_target,

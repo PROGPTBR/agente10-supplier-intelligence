@@ -98,6 +98,20 @@ async def regenerate_shortlist_for_cluster(
             pool_size = max(cfg.size * 3, RETRIEVAL_POOL)
             cnaes_alvo = [cluster.cnae] + list(cluster.cnaes_secundarios or [])
             for cnae_target in cnaes_alvo:
+                # Delta-regen: skip CNAEs that already have a full shortlist
+                # for this tenant. supplier_shortlists is cross-cluster (keyed
+                # by tenant+cnae+cnpj), so if another cluster already paid
+                # for it we reuse. Saves Anthropic rerank calls when the user
+                # only added secondaries to an existing cluster.
+                existing = await session.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM supplier_shortlists "
+                        "WHERE cnae = :c AND tenant_id = :t"
+                    ),
+                    {"c": cnae_target, "t": str(tenant_id)},
+                )
+                if existing and existing >= cfg.size:
+                    continue
                 await session.execute(
                     text("DELETE FROM supplier_shortlists " "WHERE cnae = :c AND tenant_id = :t"),
                     {"c": cnae_target, "t": str(tenant_id)},
