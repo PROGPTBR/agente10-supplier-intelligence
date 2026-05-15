@@ -22,6 +22,10 @@ from pydantic import BaseModel, Field
 
 from agente10.cache import classification_cache as cache
 from agente10.cnae.retrieval import CnaeCandidate
+from agente10.cnae.trade_tier import (
+    find_trade_tier_siblings,
+    normalize_to_fabricacao_first,
+)
 from agente10.curator.cnae_picker import CnaePick
 from agente10.integrations.voyage import VoyageClient
 
@@ -44,6 +48,27 @@ class ClassificationResult(BaseModel):
 
 HybridRetrievalFn = Callable[[list[float], int, int], Awaitable[list[CnaeCandidate]]]
 CuratorPickFn = Callable[..., Awaitable[CnaePick]]
+
+
+async def _maybe_enrich_with_trade_tier(
+    result: ClassificationResult,
+    cache_session: object | None,
+) -> ClassificationResult:
+    """Auto-suggest fabricação/atacado/varejo siblings when the primary CNAE is
+    in one of those divisions. Best-effort: any failure leaves the result
+    unchanged. Skipped for manual_pending (no confident primary to anchor on)."""
+    if result.cnae_metodo == "manual_pending" or cache_session is None:
+        return result
+    try:
+        siblings = await find_trade_tier_siblings(cache_session, result.cnae)  # type: ignore[arg-type]
+        new_primary, new_secs = normalize_to_fabricacao_first(
+            result.cnae, result.cnaes_secundarios, siblings
+        )
+        result.cnae = new_primary
+        result.cnaes_secundarios = new_secs
+    except Exception:
+        pass
+    return result
 
 
 def _build_rerank_doc(c: CnaeCandidate) -> str:
@@ -74,9 +99,10 @@ async def classify_cluster(
     if cache_session is not None:
         hit = await cache.lookup(cache_session, cluster_name)  # type: ignore[arg-type]
         if hit is not None:
-            return ClassificationResult(
+            result = ClassificationResult(
                 cnae=hit.cnae, cnae_confianca=hit.confianca, cnae_metodo="cache"
             )
+            return await _maybe_enrich_with_trade_tier(result, cache_session)
 
     # 2. Embed + 3. Hybrid retrieval
     embedding = await voyage.embed_query(cluster_name)
@@ -119,7 +145,7 @@ async def classify_cluster(
                 result.cnae_metodo,
                 embedding=embedding,
             )
-        return result
+        return await _maybe_enrich_with_trade_tier(result, cache_session)
 
     if rerank_top_score >= curator_thr:
         # Few-shot: similar already-classified descriptions, prioritizing humano
@@ -155,13 +181,14 @@ async def classify_cluster(
                     result.cnae_metodo,
                     embedding=embedding,
                 )
-            return result
+            return await _maybe_enrich_with_trade_tier(result, cache_session)
         except Exception:
-            return ClassificationResult(
+            fallback = ClassificationResult(
                 cnae=top.codigo,
                 cnae_confianca=rerank_top_score,
                 cnae_metodo="retrieval_fallback",
             )
+            return await _maybe_enrich_with_trade_tier(fallback, cache_session)
 
     return ClassificationResult(
         cnae=top.codigo, cnae_confianca=rerank_top_score, cnae_metodo="manual_pending"
