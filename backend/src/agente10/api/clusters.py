@@ -92,6 +92,29 @@ class FilialView(BaseModel):
     cnaes_secundarios: list[str]
 
 
+class LinhaRow(BaseModel):
+    id: UUID
+    descricao_original: str
+    fornecedor_atual: str | None
+    valor_total: float | None
+
+
+class LinhasPage(BaseModel):
+    total: int
+    linhas: list[LinhaRow]
+
+
+class MoveLinhasBody(BaseModel):
+    linha_ids: list[UUID]
+    target_cluster_id: UUID
+
+
+class MoveLinhasResult(BaseModel):
+    moved: int
+    source_cluster_id: UUID
+    target_cluster_id: UUID
+
+
 class ClusterPatch(BaseModel):
     cnae: str | None = None
     cnaes_secundarios: list[str] | None = None
@@ -397,6 +420,164 @@ async def get_company_filiais(
         )
         for r in rows
     ]
+
+
+@router.get("/clusters/{cluster_id}/linhas", response_model=LinhasPage)
+async def get_cluster_linhas(
+    cluster_id: UUID,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=500),
+) -> LinhasPage:
+    """Paginated list of linhas belonging to this cluster, in upload order."""
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            exists = (
+                await session.execute(
+                    text("SELECT 1 FROM spend_clusters WHERE id = :i"),
+                    {"i": str(cluster_id)},
+                )
+            ).first()
+            if not exists:
+                raise HTTPException(404, "cluster not found")
+            total = await session.scalar(
+                text("SELECT COUNT(*) FROM spend_linhas WHERE cluster_id = :i"),
+                {"i": str(cluster_id)},
+            )
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT id, descricao_original, fornecedor_atual, valor_total "
+                        "FROM spend_linhas WHERE cluster_id = :i "
+                        "ORDER BY id "
+                        "LIMIT :lim OFFSET :off"
+                    ),
+                    {"i": str(cluster_id), "lim": limit, "off": offset},
+                )
+            ).all()
+    return LinhasPage(
+        total=int(total or 0),
+        linhas=[
+            LinhaRow(
+                id=r.id,
+                descricao_original=r.descricao_original,
+                fornecedor_atual=r.fornecedor_atual,
+                valor_total=float(r.valor_total) if r.valor_total is not None else None,
+            )
+            for r in rows
+        ],
+    )
+
+
+@router.post(
+    "/clusters/{cluster_id}/linhas/move",
+    response_model=MoveLinhasResult,
+)
+async def move_linhas(
+    cluster_id: UUID,
+    body: MoveLinhasBody,
+    tenant_id: UUID = Depends(get_tenant_id),  # noqa: B008
+) -> MoveLinhasResult:
+    """Move N linhas from `cluster_id` to `body.target_cluster_id`.
+
+    Constraints:
+    - Source + target must be in the same upload (no cross-upload moves)
+    - All linha_ids must currently belong to `cluster_id`
+    - Target inherits its current cnae/cnae_metodo down to the moved linhas
+      so the denormalised fields stay consistent with their parent cluster
+    - num_linhas on both clusters is recomputed from scratch (safe + simple)
+    """
+    if not body.linha_ids:
+        raise HTTPException(400, "linha_ids cannot be empty")
+    if body.target_cluster_id == cluster_id:
+        raise HTTPException(400, "target_cluster_id must differ from source")
+
+    factory = get_session_factory()
+    async with factory() as session, session.begin():
+        async with tenant_context(session, tenant_id):
+            src = (
+                await session.execute(
+                    text("SELECT id, upload_id FROM spend_clusters WHERE id = :i"),
+                    {"i": str(cluster_id)},
+                )
+            ).first()
+            if not src:
+                raise HTTPException(404, "source cluster not found")
+            tgt = (
+                await session.execute(
+                    text(
+                        "SELECT id, upload_id, cnae, cnae_confianca, cnae_metodo "
+                        "FROM spend_clusters WHERE id = :i"
+                    ),
+                    {"i": str(body.target_cluster_id)},
+                )
+            ).first()
+            if not tgt:
+                raise HTTPException(404, "target cluster not found")
+            if tgt.upload_id != src.upload_id:
+                raise HTTPException(
+                    422,
+                    "target cluster must belong to the same upload as the source",
+                )
+
+            linha_id_strs = [str(x) for x in body.linha_ids]
+            # Confirm every requested linha currently sits in the source cluster.
+            present = (
+                await session.execute(
+                    text(
+                        "SELECT id FROM spend_linhas "
+                        "WHERE cluster_id = :i AND id = ANY(:ids::uuid[])"
+                    ),
+                    {"i": str(cluster_id), "ids": linha_id_strs},
+                )
+            ).all()
+            if len(present) != len(linha_id_strs):
+                raise HTTPException(
+                    422,
+                    f"only {len(present)} of {len(linha_id_strs)} linhas belong "
+                    "to the source cluster",
+                )
+
+            await session.execute(
+                text(
+                    "UPDATE spend_linhas SET "
+                    "  cluster_id = :tgt, "
+                    "  cnae = :c, cnae_confianca = :cc, cnae_metodo = :cm "
+                    "WHERE id = ANY(:ids::uuid[])"
+                ),
+                {
+                    "tgt": str(body.target_cluster_id),
+                    "c": tgt.cnae,
+                    "cc": tgt.cnae_confianca,
+                    "cm": tgt.cnae_metodo,
+                    "ids": linha_id_strs,
+                },
+            )
+            # Recompute num_linhas on both clusters from scratch — cheap (small N)
+            # and avoids drift if a future change loses count of an in-flight move.
+            await session.execute(
+                text(
+                    "UPDATE spend_clusters SET num_linhas = ("
+                    "  SELECT COUNT(*) FROM spend_linhas WHERE cluster_id = :i"
+                    ") WHERE id = :i"
+                ),
+                {"i": str(cluster_id)},
+            )
+            await session.execute(
+                text(
+                    "UPDATE spend_clusters SET num_linhas = ("
+                    "  SELECT COUNT(*) FROM spend_linhas WHERE cluster_id = :i"
+                    ") WHERE id = :i"
+                ),
+                {"i": str(body.target_cluster_id)},
+            )
+
+    return MoveLinhasResult(
+        moved=len(body.linha_ids),
+        source_cluster_id=cluster_id,
+        target_cluster_id=body.target_cluster_id,
+    )
 
 
 @router.patch("/clusters/{cluster_id}", response_model=ClusterDetail)

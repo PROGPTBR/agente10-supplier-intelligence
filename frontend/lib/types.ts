@@ -85,6 +85,20 @@ export const ShortlistEntry = z.object({
 });
 export type ShortlistEntry = z.infer<typeof ShortlistEntry>;
 
+export const LinhaRow = z.object({
+  id: z.string().uuid(),
+  descricao_original: z.string(),
+  fornecedor_atual: z.string().nullable(),
+  valor_total: z.number().nullable(),
+});
+export type LinhaRow = z.infer<typeof LinhaRow>;
+
+export const LinhasPage = z.object({
+  total: z.number(),
+  linhas: z.array(LinhaRow),
+});
+export type LinhasPage = z.infer<typeof LinhasPage>;
+
 export const Filial = z.object({
   cnpj: z.string(),
   razao_social: z.string(),

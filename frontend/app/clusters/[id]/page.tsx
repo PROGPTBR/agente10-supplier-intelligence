@@ -9,12 +9,19 @@ import {
   useShortlistQuery,
 } from "../../../lib/api/clusters";
 import { ClusterReviewForm } from "../../../components/cluster/ClusterReviewForm";
+import { ClusterLinhasTab } from "../../../components/cluster/ClusterLinhasTab";
 import { ShortlistTable } from "../../../components/shortlist/ShortlistTable";
 import {
   ShortlistFilters,
   type ShortlistFilterState,
 } from "../../../components/shortlist/ShortlistFilters";
 import { SelectionPanel } from "../../../components/shortlist/SelectionPanel";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../../components/ui/tabs";
 
 export default function ClusterDetailPage({
   params,
@@ -173,128 +180,141 @@ export default function ClusterDetailPage({
         </div>
       </header>
 
-      {/* Two-col body — left review, right samples */}
-      <div
-        className="r-rise mt-10 grid grid-cols-1 gap-10 lg:grid-cols-12"
-        style={{ animationDelay: "140ms" }}
-      >
-        <div className="lg:col-span-7">
-          <ClusterReviewForm cluster={c} />
-        </div>
+      {/* Tabs */}
+      <section className="r-rise mt-10" style={{ animationDelay: "160ms" }}>
+        <Tabs defaultValue="review" className="w-full">
+          <TabsList>
+            <TabsTrigger value="review">Revisão CNAE</TabsTrigger>
+            <TabsTrigger value="linhas">Linhas</TabsTrigger>
+            <TabsTrigger value="shortlist">Shortlist</TabsTrigger>
+          </TabsList>
 
-        <div className="space-y-8 lg:col-span-5">
-          {c.sample_linhas.length > 0 && (
-            <section className="r-card p-6">
-              <p className="r-eyebrow mb-3">Amostra das linhas</p>
-              <ul className="space-y-2">
-                {c.sample_linhas.map((s, i) => (
-                  <li
-                    key={i}
-                    className="rounded-lg bg-[var(--r-surface-2)] px-3 py-2 text-sm leading-snug text-[var(--r-ink)]"
-                  >
-                    {s}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {c.notas_revisor && (
-            <section className="r-card space-y-3 p-6">
-              <p className="r-eyebrow">Notas anteriores</p>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--r-ink)]">
-                {c.notas_revisor}
-              </p>
-            </section>
-          )}
-        </div>
-      </div>
-
-      {/* Shortlist — with multi-select + side panel */}
-      <section className="r-rise mt-14" style={{ animationDelay: "260ms" }}>
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="r-eyebrow">Shortlist de fornecedores</p>
-            <h2 className="r-display mt-1 text-2xl text-[var(--r-ink)]">
-              {filtered ? "Resultado filtrado" : "Top por capital social"}
-            </h2>
-          </div>
-          <ShortlistFilters value={filters} onChange={setFilters} />
-        </div>
-
-        {c.shortlist_gerada === false && (
-          <p
-            className="r-pill mb-4"
-            style={{
-              backgroundColor: "rgba(245,158,11,0.14)",
-              color: "#B45309",
-            }}
-          >
-            <span
-              aria-hidden
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: "#F59E0B" }}
-            />
-            Regenerando shortlist…
-          </p>
-        )}
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="r-card overflow-hidden">
-            {shortlist.isLoading && (
-              <p className="p-6 text-sm text-[var(--r-ink-2)]">
-                Carregando fornecedores…
-              </p>
-            )}
-            {shortlist.data && (
-              <ShortlistTable
-                clusterId={id}
-                entries={shortlist.data}
-                selectedKeys={selectedKeys}
-                onToggleSelect={toggleSelect}
-                onToggleSelectAll={toggleSelectAll}
-              />
-            )}
-          </div>
-
-          <div className="lg:sticky lg:top-6 lg:self-start">
-            {selectedEntries.length === 0 ? (
-              <div className="r-card p-6 text-center">
-                <div
-                  aria-hidden
-                  className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
-                  style={{ backgroundColor: "var(--r-primary-soft)" }}
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--r-primary)"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </div>
-                <p className="r-display text-base text-[var(--r-ink)]">
-                  Marque fornecedores
-                </p>
-                <p className="mt-1.5 text-xs text-[var(--r-ink-2)]">
-                  Selecione com as checkboxes para ver totais e ações
-                </p>
+          {/* TAB: Revisão CNAE (review form + sample lines) */}
+          <TabsContent value="review">
+            <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
+              <div className="lg:col-span-7">
+                <ClusterReviewForm cluster={c} />
               </div>
-            ) : (
-              <SelectionPanel
-                clusterId={id}
-                selected={selectedEntries}
-                onClear={() => setSelectedKeys(new Set())}
-                onRemove={toggleSelect}
-              />
+              <div className="space-y-8 lg:col-span-5">
+                {c.sample_linhas.length > 0 && (
+                  <section className="r-card p-6">
+                    <p className="r-eyebrow mb-3">Amostra das linhas</p>
+                    <ul className="space-y-2">
+                      {c.sample_linhas.map((s, i) => (
+                        <li
+                          key={i}
+                          className="rounded-lg bg-[var(--r-surface-2)] px-3 py-2 text-sm leading-snug text-[var(--r-ink)]"
+                        >
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                {c.notas_revisor && (
+                  <section className="r-card space-y-3 p-6">
+                    <p className="r-eyebrow">Notas anteriores</p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--r-ink)]">
+                      {c.notas_revisor}
+                    </p>
+                  </section>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* TAB: Linhas (full list + multi-select + move) */}
+          <TabsContent value="linhas">
+            <ClusterLinhasTab clusterId={id} uploadId={c.upload_id} />
+          </TabsContent>
+
+          {/* TAB: Shortlist */}
+          <TabsContent value="shortlist">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="r-eyebrow">Shortlist de fornecedores</p>
+                <h2 className="r-display mt-1 text-2xl text-[var(--r-ink)]">
+                  {filtered ? "Resultado filtrado" : "Top por capital social"}
+                </h2>
+              </div>
+              <ShortlistFilters value={filters} onChange={setFilters} />
+            </div>
+
+            {c.shortlist_gerada === false && (
+              <p
+                className="r-pill mb-4"
+                style={{
+                  backgroundColor: "rgba(245,158,11,0.14)",
+                  color: "#B45309",
+                }}
+              >
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: "#F59E0B" }}
+                />
+                Regenerando shortlist…
+              </p>
             )}
-          </div>
-        </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+              <div className="r-card overflow-hidden">
+                {shortlist.isLoading && (
+                  <p className="p-6 text-sm text-[var(--r-ink-2)]">
+                    Carregando fornecedores…
+                  </p>
+                )}
+                {shortlist.data && (
+                  <ShortlistTable
+                    clusterId={id}
+                    entries={shortlist.data}
+                    selectedKeys={selectedKeys}
+                    onToggleSelect={toggleSelect}
+                    onToggleSelectAll={toggleSelectAll}
+                  />
+                )}
+              </div>
+
+              <div className="lg:sticky lg:top-6 lg:self-start">
+                {selectedEntries.length === 0 ? (
+                  <div className="r-card p-6 text-center">
+                    <div
+                      aria-hidden
+                      className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
+                      style={{ backgroundColor: "var(--r-primary-soft)" }}
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="var(--r-primary)"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                    <p className="r-display text-base text-[var(--r-ink)]">
+                      Marque fornecedores
+                    </p>
+                    <p className="mt-1.5 text-xs text-[var(--r-ink-2)]">
+                      Selecione com as checkboxes para ver totais e ações
+                    </p>
+                  </div>
+                ) : (
+                  <SelectionPanel
+                    clusterId={id}
+                    selected={selectedEntries}
+                    onClear={() => setSelectedKeys(new Set())}
+                    onRemove={toggleSelect}
+                  />
+                )}
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </section>
     </div>
   );

@@ -165,27 +165,28 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
       {cluster.cnaes_secundarios.length > 0 && (
         <section>
           <p className="r-eyebrow mb-3">CNAEs alternativos</p>
-          <ul className="flex flex-wrap gap-2">
+          <ul className="flex flex-col gap-2">
             {cluster.cnaes_secundarios.map((code) => (
               <li
                 key={code}
-                className="r-pill"
-                style={{
-                  backgroundColor: "var(--r-primary-soft)",
-                  color: "var(--r-primary)",
-                  padding: "5px 12px",
-                }}
+                className="flex items-start gap-3 rounded-xl border bg-[var(--r-primary-soft)] px-4 py-2.5 r-rule"
+                style={{ borderColor: "rgba(91,63,229,0.18)" }}
               >
-                <span className="r-mono font-semibold">{code}</span>
-                <span className="hidden text-[var(--r-ink-2)] sm:inline">
-                  {denomFor(code).slice(0, 36)}
-                  {denomFor(code).length > 36 ? "…" : ""}
+                <span className="r-mono shrink-0 pt-0.5 text-xs font-semibold text-[var(--r-primary)]">
+                  {code}
+                </span>
+                <span className="flex-1 text-sm leading-snug text-[var(--r-ink)]">
+                  {denomFor(code) || (
+                    <span className="italic text-[var(--r-ink-3)]">
+                      descrição não encontrada
+                    </span>
+                  )}
                 </span>
                 <button
                   type="button"
                   onClick={() => removeAlternative(code)}
                   disabled={patch.isPending}
-                  className="ml-1 opacity-50 transition-opacity hover:opacity-100 disabled:opacity-20"
+                  className="shrink-0 pt-0.5 text-[var(--r-primary)] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-20"
                   title="Remover alternativo"
                   aria-label={`Remover CNAE alternativo ${code}`}
                 >

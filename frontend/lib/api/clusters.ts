@@ -6,6 +6,7 @@ import {
   ClusterDetail,
   ClusterSummary,
   Filial,
+  LinhasPage,
   ShortlistEntry,
 } from "../types";
 
@@ -88,6 +89,60 @@ export interface ClusterPatchBody {
   cnaes_secundarios?: string[];
   notas_revisor?: string;
   revisado_humano?: boolean;
+}
+
+export function useClusterLinhasQuery(
+  clusterId: string,
+  page: number,
+  pageSize: number = 50,
+) {
+  return useQuery({
+    queryKey: ["clusters", clusterId, "linhas", page, pageSize],
+    queryFn: async () =>
+      LinhasPage.parse(
+        await apiFetch(
+          `/api/v1/clusters/${clusterId}/linhas?offset=${
+            page * pageSize
+          }&limit=${pageSize}`,
+        ),
+      ),
+    enabled: !!clusterId,
+  });
+}
+
+export function useMoveLinhasMutation(sourceClusterId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { linhaIds: string[]; targetClusterId: string }) =>
+      await apiFetch<{
+        moved: number;
+        source_cluster_id: string;
+        target_cluster_id: string;
+      }>(`/api/v1/clusters/${sourceClusterId}/linhas/move`, {
+        method: "POST",
+        body: JSON.stringify({
+          linha_ids: args.linhaIds,
+          target_cluster_id: args.targetClusterId,
+        }),
+      }),
+    onSuccess: (_data, args) => {
+      // Both source and target lose their cached pages — invalidate both
+      qc.invalidateQueries({
+        queryKey: ["clusters", sourceClusterId, "linhas"],
+      });
+      qc.invalidateQueries({
+        queryKey: ["clusters", args.targetClusterId, "linhas"],
+      });
+      // num_linhas changed on both clusters → invalidate detail + upload list
+      qc.invalidateQueries({
+        queryKey: ["clusters", sourceClusterId, "detail"],
+      });
+      qc.invalidateQueries({
+        queryKey: ["clusters", args.targetClusterId, "detail"],
+      });
+      qc.invalidateQueries({ queryKey: ["clusters"] });
+    },
+  });
 }
 
 export function usePatchClusterMutation(clusterId: string) {
