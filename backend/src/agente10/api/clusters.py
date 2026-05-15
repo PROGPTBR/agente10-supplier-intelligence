@@ -527,7 +527,7 @@ async def move_linhas(
                 await session.execute(
                     text(
                         "SELECT id FROM spend_linhas "
-                        "WHERE cluster_id = :i AND id = ANY(:ids::uuid[])"
+                        "WHERE cluster_id = :i AND id = ANY(CAST(:ids AS uuid[]))"
                     ),
                     {"i": str(cluster_id), "ids": linha_id_strs},
                 )
@@ -544,7 +544,7 @@ async def move_linhas(
                     "UPDATE spend_linhas SET "
                     "  cluster_id = :tgt, "
                     "  cnae = :c, cnae_confianca = :cc, cnae_metodo = :cm "
-                    "WHERE id = ANY(:ids::uuid[])"
+                    "WHERE id = ANY(CAST(:ids AS uuid[]))"
                 ),
                 {
                     "tgt": str(body.target_cluster_id),
