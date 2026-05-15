@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from agente10.api.uploads import get_tenant_id
 from agente10.cache import classification_cache as cache
@@ -522,13 +522,16 @@ async def move_linhas(
                 )
 
             linha_id_strs = [str(x) for x in body.linha_ids]
-            # Confirm every requested linha currently sits in the source cluster.
+            # Use `IN :ids` with an expanding bindparam — asyncpg/SQLAlchemy gets
+            # confused by `:ids::uuid[]` (cast operator `::` collides with the
+            # named-parameter prefix `:`). Expanding bindparam emits one
+            # placeholder per element, no array cast needed.
+            present_stmt = text(
+                "SELECT id FROM spend_linhas " "WHERE cluster_id = :i AND id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True))
             present = (
                 await session.execute(
-                    text(
-                        "SELECT id FROM spend_linhas "
-                        "WHERE cluster_id = :i AND id = ANY(CAST(:ids AS uuid[]))"
-                    ),
+                    present_stmt,
                     {"i": str(cluster_id), "ids": linha_id_strs},
                 )
             ).all()
@@ -539,13 +542,14 @@ async def move_linhas(
                     "to the source cluster",
                 )
 
+            update_stmt = text(
+                "UPDATE spend_linhas SET "
+                "  cluster_id = :tgt, "
+                "  cnae = :c, cnae_confianca = :cc, cnae_metodo = :cm "
+                "WHERE id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True))
             await session.execute(
-                text(
-                    "UPDATE spend_linhas SET "
-                    "  cluster_id = :tgt, "
-                    "  cnae = :c, cnae_confianca = :cc, cnae_metodo = :cm "
-                    "WHERE id = ANY(CAST(:ids AS uuid[]))"
-                ),
+                update_stmt,
                 {
                     "tgt": str(body.target_cluster_id),
                     "c": tgt.cnae,
