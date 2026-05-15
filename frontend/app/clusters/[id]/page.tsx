@@ -36,6 +36,14 @@ export default function ClusterDetailPage({
     municipio: "",
   });
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  // Reset selection when navigating to a different cluster — state-during-render
+  // pattern (https://react.dev/reference/react/useState#storing-information-from-previous-renders)
+  // avoids the cascading re-render an effect would trigger.
+  const [lastClusterId, setLastClusterId] = useState(id);
+  if (lastClusterId !== id) {
+    setLastClusterId(id);
+    setSelectedKeys(new Set());
+  }
   const shortlist = useShortlistQuery(id, cluster.data?.shortlist_gerada, {
     uf: filters.uf || undefined,
     municipio: filters.municipio || undefined,
@@ -49,11 +57,6 @@ export default function ClusterDetailPage({
     currentIdx >= 0 && currentIdx < orderedIds.length - 1
       ? orderedIds[currentIdx + 1]
       : null;
-
-  // Reset selection on cluster change
-  useEffect(() => {
-    setSelectedKeys(new Set());
-  }, [id]);
 
   // Keyboard shortcuts: ← / → navigate between siblings
   useEffect(() => {
