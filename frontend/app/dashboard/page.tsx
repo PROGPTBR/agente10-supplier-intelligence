@@ -8,9 +8,18 @@ import { RecentUploadsList } from "../../components/dashboard/RecentUploadsList"
 export default function DashboardPage() {
   const { data, isLoading, error } = useDashboardStats();
 
-  if (isLoading) return <p className="text-sm text-zinc-500">Carregando…</p>;
+  if (isLoading)
+    return (
+      <p className="r-display text-xl text-[var(--r-ink-2)]">
+        Carregando dashboard…
+      </p>
+    );
   if (error || !data) {
-    return <p className="text-sm text-red-600">Erro ao carregar dashboard.</p>;
+    return (
+      <p className="text-sm text-[var(--r-danger)]">
+        Erro ao carregar dashboard.
+      </p>
+    );
   }
 
   const revisado_pct =
@@ -19,9 +28,15 @@ export default function DashboardPage() {
       : 0;
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mx-auto max-w-6xl space-y-8">
+      <header className="r-rise space-y-2">
+        <p className="r-eyebrow">Painel geral</p>
+        <h1 className="r-display text-4xl text-[var(--r-ink)]">Dashboard</h1>
+      </header>
+      <div
+        className="r-rise grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        style={{ animationDelay: "80ms" }}
+      >
         <StatCard label="Uploads totais" value={data.uploads_total} />
         <StatCard
           label="Uploads concluídos"
@@ -35,11 +50,11 @@ export default function DashboardPage() {
           sublabel={`${data.clusters_revised} de ${data.clusters_total}`}
         />
       </div>
-      <div className="rounded-lg border border-zinc-200 bg-white p-6">
+      <div className="r-card r-rise p-7" style={{ animationDelay: "160ms" }}>
         <ClustersByMetodoChart data={data.clusters_by_metodo} />
       </div>
-      <div className="rounded-lg border border-zinc-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-medium">Uploads recentes</h2>
+      <div className="r-card r-rise p-7" style={{ animationDelay: "240ms" }}>
+        <p className="r-eyebrow mb-4">Uploads recentes</p>
         <RecentUploadsList uploads={data.recent_uploads} />
       </div>
     </div>

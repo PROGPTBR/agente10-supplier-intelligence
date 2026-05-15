@@ -16,15 +16,21 @@ function formatBRL(n: number | null): string {
 export function ShortlistTable({
   clusterId,
   entries,
+  selectedKeys,
+  onToggleSelect,
+  onToggleSelectAll,
 }: {
   clusterId: string;
   entries: ShortlistEntry[];
+  selectedKeys?: Set<string>;
+  onToggleSelect?: (cnpjBasico: string) => void;
+  onToggleSelectAll?: () => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (entries.length === 0) {
     return (
-      <p className="r-serif text-base italic text-[var(--r-ink-2)]">
+      <p className="r-display text-base text-[var(--r-ink-2)]">
         Nenhum fornecedor encontrado com os filtros atuais.
       </p>
     );
@@ -34,6 +40,14 @@ export function ShortlistTable({
     setExpanded((curr) => (curr === cnpjBasico ? null : cnpjBasico));
   }
 
+  const showCheckboxes = !!onToggleSelect && !!selectedKeys;
+  const allSelected =
+    showCheckboxes && entries.every((e) => selectedKeys!.has(e.cnpj_basico));
+  const someSelected =
+    showCheckboxes &&
+    !allSelected &&
+    entries.some((e) => selectedKeys!.has(e.cnpj_basico));
+
   return (
     <table
       className="w-full border-separate border-spacing-0 text-sm"
@@ -41,22 +55,42 @@ export function ShortlistTable({
     >
       <thead>
         <tr>
-          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
+          {showCheckboxes && (
+            <th scope="col" className="w-10 border-b r-rule px-3 py-3">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someSelected;
+                }}
+                onChange={onToggleSelectAll}
+                className="h-4 w-4 cursor-pointer rounded accent-[var(--r-primary)]"
+                aria-label="Selecionar todos"
+              />
+            </th>
+          )}
+          <th
+            scope="col"
+            className="r-eyebrow border-b r-rule px-3 py-3 text-left"
+          >
             #
           </th>
-          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
+          <th scope="col" className="r-eyebrow border-b r-rule py-3 text-left">
             Empresa
           </th>
-          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
+          <th scope="col" className="r-eyebrow border-b r-rule py-3 text-left">
             CNPJ (matriz)
           </th>
-          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
+          <th scope="col" className="r-eyebrow border-b r-rule py-3 text-left">
             Filiais
           </th>
-          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
+          <th scope="col" className="r-eyebrow border-b r-rule py-3 text-left">
             Capital
           </th>
-          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
+          <th
+            scope="col"
+            className="r-eyebrow border-b r-rule px-3 py-3 text-left"
+          >
             UF / Município
           </th>
         </tr>
@@ -64,17 +98,35 @@ export function ShortlistTable({
       <tbody>
         {entries.map((e) => {
           const isOpen = expanded === e.cnpj_basico;
+          const isSelected = showCheckboxes && selectedKeys!.has(e.cnpj_basico);
           return (
             <Fragment key={e.cnpj_basico}>
               <tr
                 onClick={() => toggle(e.cnpj_basico)}
                 className="r-hover-row cursor-pointer transition-colors"
+                style={
+                  isSelected
+                    ? { backgroundColor: "var(--r-primary-soft)" }
+                    : undefined
+                }
               >
-                <td className="r-mono border-b r-rule py-3 text-[var(--r-ink-3)]">
-                  {e.rank_estagio3}
+                {showCheckboxes && (
+                  <td className="border-b r-rule px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onClick={(ev) => ev.stopPropagation()}
+                      onChange={() => onToggleSelect!(e.cnpj_basico)}
+                      className="h-4 w-4 cursor-pointer rounded accent-[var(--r-primary)]"
+                      aria-label={`Selecionar ${e.razao_social}`}
+                    />
+                  </td>
+                )}
+                <td className="r-mono border-b r-rule px-3 py-3 text-xs text-[var(--r-ink-3)]">
+                  {String(e.rank_estagio3).padStart(2, "0")}
                 </td>
                 <td className="border-b r-rule py-3">
-                  <span className="r-serif text-base italic text-[var(--r-ink)]">
+                  <span className="font-medium text-[var(--r-ink)]">
                     {e.nome_fantasia ?? e.razao_social}
                   </span>
                   {e.nome_fantasia && (
@@ -88,23 +140,22 @@ export function ShortlistTable({
                 </td>
                 <td className="border-b r-rule py-3 text-[var(--r-ink-2)]">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="r-mono text-[var(--r-ink)]">
+                    <span className="r-mono font-semibold text-[var(--r-ink)]">
                       {e.filiais_count}
                     </span>
-                    {e.filiais_count === 1 ? "filial" : "filiais"}
+                    <span className="text-xs">
+                      {e.filiais_count === 1 ? "filial" : "filiais"}
+                    </span>
                   </span>
-                  <span
-                    className="ml-2 text-xs"
-                    style={{ color: "var(--r-ink-3)" }}
-                  >
+                  <span className="ml-2 text-[10px] text-[var(--r-ink-3)]">
                     {isOpen ? "▼" : "▶"}
                   </span>
                 </td>
                 <td className="r-mono border-b r-rule py-3 text-xs text-[var(--r-ink)]">
                   {formatBRL(e.capital_social)}
                 </td>
-                <td className="border-b r-rule py-3 text-[var(--r-ink-2)]">
-                  <span className="r-mono text-[var(--r-ink)]">
+                <td className="border-b r-rule px-3 py-3 text-[var(--r-ink-2)]">
+                  <span className="r-mono font-semibold text-[var(--r-ink)]">
                     {e.uf ?? "—"}
                   </span>
                   {e.municipio && (
@@ -116,7 +167,10 @@ export function ShortlistTable({
               </tr>
               {isOpen && (
                 <tr>
-                  <td colSpan={6} className="border-b r-rule">
+                  <td
+                    colSpan={showCheckboxes ? 7 : 6}
+                    className="border-b r-rule"
+                  >
                     <FiliaisPanel
                       clusterId={clusterId}
                       cnpjBasico={e.cnpj_basico}

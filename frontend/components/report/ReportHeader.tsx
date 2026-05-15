@@ -5,11 +5,34 @@ import { useState } from "react";
 import { apiDownload } from "../../lib/api/client";
 import type { UploadStatus } from "../../lib/types";
 
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  done: { label: "Concluído", color: "var(--r-success)" },
-  processing: { label: "Processando", color: "#0e7490" },
-  pending: { label: "Aguardando", color: "var(--r-ink-2)" },
-  failed: { label: "Falhou", color: "var(--r-danger)" },
+const STATUS_LABEL: Record<
+  string,
+  { label: string; bg: string; fg: string; dot: string }
+> = {
+  done: {
+    label: "Concluído",
+    bg: "rgba(16,185,129,0.12)",
+    fg: "#047857",
+    dot: "#10B981",
+  },
+  processing: {
+    label: "Processando",
+    bg: "rgba(91,63,229,0.12)",
+    fg: "var(--r-primary)",
+    dot: "var(--r-primary)",
+  },
+  pending: {
+    label: "Aguardando",
+    bg: "var(--r-surface-2)",
+    fg: "var(--r-ink-2)",
+    dot: "var(--r-ink-3)",
+  },
+  failed: {
+    label: "Falhou",
+    bg: "rgba(239,68,68,0.12)",
+    fg: "#B91C1C",
+    dot: "#EF4444",
+  },
 };
 
 function formatDuration(seconds: number | null): string | null {
@@ -50,30 +73,27 @@ export function ReportHeader({
         <span className="text-[var(--r-ink)]">{filename}</span>
       </nav>
 
-      <div className="flex flex-wrap items-end justify-between gap-6 border-b r-rule pb-6">
-        <div className="space-y-2">
-          <h1 className="r-serif text-4xl italic leading-none tracking-tight text-[var(--r-ink)] sm:text-5xl">
+      <div className="flex flex-wrap items-end justify-between gap-6">
+        <div className="space-y-3">
+          <h1 className="r-display text-4xl leading-none text-[var(--r-ink)] sm:text-[44px]">
             {filename.replace(/\.(csv|xlsx)$/i, "")}
           </h1>
           <div className="flex items-center gap-3 text-sm">
             <span
-              className="inline-flex items-center gap-1.5"
-              style={{ color: status.color }}
+              className="r-pill"
+              style={{ backgroundColor: status.bg, color: status.fg }}
             >
               <span
                 aria-hidden
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: status.color }}
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: status.dot }}
               />
               {status.label}
             </span>
             {dur && (
-              <>
-                <span className="text-[var(--r-rule)]" aria-hidden>
-                  •
-                </span>
-                <span className="r-mono text-[var(--r-ink-2)]">{dur}</span>
-              </>
+              <span className="r-mono text-xs text-[var(--r-ink-2)]">
+                {dur}
+              </span>
             )}
           </div>
         </div>
@@ -93,7 +113,7 @@ export function ReportHeader({
               }
             }}
             disabled={exporting || !canExport}
-            className="rounded-sm border border-[var(--r-rule)] bg-transparent px-3.5 py-1.5 text-xs font-medium text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-40"
+            className="r-btn-ghost"
           >
             {exporting ? "Exportando…" : "Exportar XLSX"}
           </button>
@@ -101,7 +121,7 @@ export function ReportHeader({
             type="button"
             onClick={onRetry}
             disabled={retryPending || upload.status === "pending"}
-            className="rounded-sm bg-[var(--r-ink)] px-3.5 py-1.5 text-xs font-medium text-[var(--r-bg)] transition-colors hover:bg-[var(--r-accent)] disabled:opacity-40"
+            className="r-btn-primary"
             title="Reprocessa o upload (reaplica consolidação e shortlist)"
           >
             {retryPending ? "Reenviando…" : "Reprocessar"}

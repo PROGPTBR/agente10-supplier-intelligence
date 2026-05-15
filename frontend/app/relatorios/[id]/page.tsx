@@ -45,118 +45,117 @@ export default function ReportPage({
   );
 
   return (
-    <div className="-m-8 min-h-screen p-8 lg:p-12">
-      <div className="mx-auto max-w-6xl space-y-0">
-        {upload.isLoading && (
-          <p className="r-serif text-xl italic text-[var(--r-ink-2)]">
-            Carregando relatório…
-          </p>
-        )}
-        {upload.error && (
-          <p className="text-sm text-[var(--r-danger)]">
-            Relatório não encontrado.
-          </p>
-        )}
-        {upload.data && (
-          <>
-            <ReportHeader
-              upload={upload.data}
-              filename={upload.data.nome_arquivo}
-              onRetry={() => retry.mutate(id)}
-              retryPending={retry.isPending}
-            />
+    <div className="mx-auto max-w-6xl">
+      {upload.isLoading && (
+        <p className="r-display text-xl text-[var(--r-ink-2)]">
+          Carregando relatório…
+        </p>
+      )}
+      {upload.error && (
+        <p className="text-sm text-[var(--r-danger)]">
+          Relatório não encontrado.
+        </p>
+      )}
+      {upload.data && (
+        <>
+          <ReportHeader
+            upload={upload.data}
+            filename={upload.data.nome_arquivo}
+            onRetry={() => retry.mutate(id)}
+            retryPending={retry.isPending}
+          />
 
-            {upload.data.status === "failed" && upload.data.erro && (
-              <div
-                className="r-rise mt-8 rounded-sm border-l-4 bg-[var(--r-surface)] p-5"
-                style={{ borderColor: "var(--r-danger)" }}
-              >
-                <p className="r-eyebrow mb-2 text-[var(--r-danger)]">
-                  Processamento falhou
-                </p>
-                <pre className="r-mono max-h-24 overflow-auto whitespace-pre-wrap text-xs text-[var(--r-ink)]">
-                  {upload.data.erro.slice(0, 600)}
-                </pre>
-              </div>
-            )}
-
-            {upload.data.status === "pending" ? (
-              <p
-                className="r-serif r-rise mt-16 text-center text-2xl italic text-[var(--r-ink-2)]"
-                style={{ animationDelay: "120ms" }}
-              >
-                Processamento iniciado. Aguarde alguns instantes…
+          {upload.data.status === "failed" && upload.data.erro && (
+            <div
+              className="r-rise mt-8 rounded-2xl p-5"
+              style={{
+                background: "rgba(239,68,68,0.06)",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+            >
+              <p className="r-eyebrow mb-2" style={{ color: "#B91C1C" }}>
+                Processamento falhou
               </p>
-            ) : (
-              <div className="mt-10 space-y-0">
-                <ReportHero upload={upload.data} />
+              <pre className="r-mono max-h-24 overflow-auto whitespace-pre-wrap text-xs text-[var(--r-ink)]">
+                {upload.data.erro.slice(0, 600)}
+              </pre>
+            </div>
+          )}
 
-                {classificationDone && clusters.data && (
-                  <>
-                    <ReportMetodoBreakdown clusters={clusters.data} />
-                    <ReportTopCategorias clusters={clusters.data} />
-                  </>
-                )}
+          {upload.data.status === "pending" ? (
+            <p
+              className="r-display r-rise mt-16 text-center text-2xl text-[var(--r-ink-2)]"
+              style={{ animationDelay: "120ms" }}
+            >
+              Processamento iniciado. Aguarde alguns instantes…
+            </p>
+          ) : (
+            <>
+              <ReportHero upload={upload.data} />
 
-                {!classificationDone && upload.data.status === "processing" && (
-                  <section
-                    className="r-rise border-b r-rule py-10"
-                    style={{ animationDelay: "240ms" }}
-                  >
-                    <p className="r-eyebrow mb-2">Pipeline em curso</p>
-                    <p className="r-serif text-xl italic text-[var(--r-ink-2)]">
-                      Gráficos disponíveis ao terminar a classificação.
-                    </p>
-                  </section>
-                )}
+              {classificationDone && clusters.data && (
+                <>
+                  <ReportMetodoBreakdown clusters={clusters.data} />
+                  <ReportTopCategorias clusters={clusters.data} />
+                </>
+              )}
 
+              {!classificationDone && upload.data.status === "processing" && (
                 <section
-                  className="r-rise pt-10"
-                  style={{ animationDelay: "480ms" }}
+                  className="r-card r-rise mt-6 p-7"
+                  style={{ animationDelay: "200ms" }}
                 >
-                  <Tabs defaultValue="clusters" className="w-full">
-                    <TabsList>
-                      <TabsTrigger value="clusters">Clusters</TabsTrigger>
-                      <TabsTrigger value="config">Configuração</TabsTrigger>
-                    </TabsList>
+                  <p className="r-eyebrow mb-2">Pipeline em curso</p>
+                  <p className="r-display text-xl text-[var(--r-ink-2)]">
+                    Gráficos disponíveis ao terminar a classificação.
+                  </p>
+                </section>
+              )}
 
-                    <TabsContent value="clusters">
-                      {!classificationDone ? (
-                        <p className="text-sm text-[var(--r-ink-2)]">
-                          Clusters aparecem aqui quando a classificação
-                          terminar.
-                        </p>
-                      ) : (
-                        <div className="space-y-4">
-                          <ClusterFilters
-                            value={filters}
-                            onChange={setFilters}
-                          />
-                          {clusters.isLoading && (
-                            <p className="text-sm text-[var(--r-ink-2)]">
-                              Carregando clusters…
-                            </p>
-                          )}
-                          {clusters.data && (
+              <section
+                className="r-rise mt-10"
+                style={{ animationDelay: "360ms" }}
+              >
+                <Tabs defaultValue="clusters" className="w-full">
+                  <TabsList>
+                    <TabsTrigger value="clusters">Clusters</TabsTrigger>
+                    <TabsTrigger value="config">Configuração</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="clusters">
+                    {!classificationDone ? (
+                      <p className="text-sm text-[var(--r-ink-2)]">
+                        Clusters aparecem aqui quando a classificação terminar.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        <ClusterFilters value={filters} onChange={setFilters} />
+                        {clusters.isLoading && (
+                          <p className="text-sm text-[var(--r-ink-2)]">
+                            Carregando clusters…
+                          </p>
+                        )}
+                        {clusters.data && (
+                          <div className="r-card p-2">
                             <ClusterTable
                               clusters={clusters.data}
                               searchTerm={filters.search}
                             />
-                          )}
-                        </div>
-                      )}
-                    </TabsContent>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </TabsContent>
 
-                    <TabsContent value="config">
-                      <ReportConfigPanel upload={upload.data} />
-                    </TabsContent>
-                  </Tabs>
-                </section>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+                  <TabsContent value="config">
+                    <ReportConfigPanel upload={upload.data} />
+                  </TabsContent>
+                </Tabs>
+              </section>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

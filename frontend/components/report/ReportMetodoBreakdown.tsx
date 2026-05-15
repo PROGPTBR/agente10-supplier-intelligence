@@ -10,20 +10,12 @@ interface Segment {
 }
 
 const SEGMENT_ORDER: Array<Omit<Segment, "count">> = [
-  {
-    key: "revisado_humano",
-    label: "Revisado humano",
-    color: "var(--r-success)",
-  },
-  { key: "curator", label: "Curator (LLM)", color: "var(--r-ink)" },
-  { key: "retrieval", label: "Retrieval", color: "var(--r-ink-2)" },
-  { key: "cache", label: "Cache", color: "#8a8478" },
-  { key: "golden", label: "Golden seed", color: "var(--r-warning)" },
-  {
-    key: "manual_pending",
-    label: "Pendente manual",
-    color: "var(--r-accent)",
-  },
+  { key: "revisado_humano", label: "Revisado humano", color: "#10B981" },
+  { key: "curator", label: "Curator (LLM)", color: "#5B3FE5" },
+  { key: "retrieval", label: "Retrieval", color: "#8C84FF" },
+  { key: "cache", label: "Cache", color: "#A4C5FF" },
+  { key: "golden", label: "Golden seed", color: "#F59E0B" },
+  { key: "manual_pending", label: "Pendente manual", color: "#EF4444" },
 ];
 
 export function ReportMetodoBreakdown({
@@ -47,8 +39,8 @@ export function ReportMetodoBreakdown({
 
   return (
     <section
-      className="r-rise space-y-5 border-b r-rule py-10"
-      style={{ animationDelay: "240ms" }}
+      className="r-card r-rise mt-6 space-y-5 p-7"
+      style={{ animationDelay: "200ms" }}
     >
       <div className="flex items-baseline justify-between gap-4">
         <p className="r-eyebrow">Distribuição por método de classificação</p>
@@ -62,7 +54,7 @@ export function ReportMetodoBreakdown({
         aria-label={`Distribuição de métodos: ${segments
           .map((s) => `${s.label}: ${s.count}`)
           .join(", ")}`}
-        className="flex h-8 w-full overflow-hidden rounded-sm border r-rule bg-[var(--r-bg)]"
+        className="flex h-3 w-full overflow-hidden rounded-full bg-[var(--r-surface-2)]"
       >
         {segments.map((s) => (
           <div
@@ -82,11 +74,11 @@ export function ReportMetodoBreakdown({
           <li key={s.key} className="flex items-center gap-2">
             <span
               aria-hidden
-              className="h-2.5 w-2.5 shrink-0 rounded-sm"
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: s.color }}
             />
             <span className="truncate text-[var(--r-ink-2)]">{s.label}</span>
-            <span className="r-mono ml-auto text-[var(--r-ink)]">
+            <span className="r-mono ml-auto font-semibold text-[var(--r-ink)]">
               {s.count}
             </span>
           </li>

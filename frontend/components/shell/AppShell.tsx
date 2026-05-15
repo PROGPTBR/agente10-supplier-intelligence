@@ -1,40 +1,48 @@
 import Link from "next/link";
+import { IAgenticsLogo } from "../brand/IAgenticsLogo";
 import { SidebarNav } from "./SidebarNav";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-screen grid-cols-[232px_1fr]">
+    <div className="grid min-h-screen grid-cols-[256px_1fr]">
       <aside
-        className="flex flex-col border-r"
-        style={{
-          borderColor: "var(--r-rule)",
-          backgroundColor: "var(--r-bg)",
-        }}
+        className="relative flex flex-col text-white"
+        style={{ background: "var(--r-gradient)" }}
       >
+        {/* Soft inner glow at the top */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-48"
+          style={{
+            background:
+              "radial-gradient(60% 80% at 50% 0%, rgba(255,255,255,0.18) 0%, transparent 70%)",
+          }}
+        />
+
         <Link
           href="/dashboard"
-          className="block px-6 pt-8 pb-6 group focus:outline-none"
-          aria-label="Agente 10 — ir para o dashboard"
+          className="relative z-10 px-6 pt-7 pb-8 transition-opacity hover:opacity-90"
+          aria-label="IAgentics — ir para o dashboard"
         >
-          <p className="r-eyebrow mb-1">Agente 10</p>
-          <h1 className="r-serif text-3xl italic leading-none text-[var(--r-ink)] transition-colors group-hover:text-[var(--r-accent)]">
-            Supplier
-            <br />
-            Intelligence
-          </h1>
+          <IAgenticsLogo size={28} tone="light" />
+          <p className="mt-1.5 ml-[40px] text-[10px] uppercase tracking-[0.18em] text-white/60">
+            Supplier Intelligence
+          </p>
+        </Link>
+
+        <SidebarNav />
+
+        <div className="relative z-10 mt-auto px-6 pb-6">
           <div
             aria-hidden
-            className="mt-3 h-px w-12"
-            style={{ backgroundColor: "var(--r-accent)" }}
+            className="mb-4 h-px"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)",
+            }}
           />
-        </Link>
-        <SidebarNav />
-        <div className="mt-auto px-6 pb-6">
-          <p
-            className="r-mono text-[10px] tracking-wider text-[var(--r-ink-3)]"
-            aria-hidden
-          >
-            v1 · piloto
+          <p className="text-[10px] tracking-wider text-white/50">
+            v1 · piloto ELETROBRÁS
           </p>
         </div>
       </aside>

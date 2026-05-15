@@ -3,13 +3,20 @@
 import { useCountUp } from "../../lib/hooks/useCountUp";
 import type { UploadStatus } from "../../lib/types";
 
-function NumberCell({ value, label }: { value: string; label: string }) {
+function StatCell({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
   return (
     <div className="space-y-2">
       <p className="r-eyebrow">{label}</p>
-      <p className="r-serif text-4xl italic leading-none text-[var(--r-ink)]">
-        {value}
-      </p>
+      <p className="r-display text-3xl text-[var(--r-ink)]">{value}</p>
+      {hint && <p className="text-xs text-[var(--r-ink-2)]">{hint}</p>}
     </div>
   );
 }
@@ -19,60 +26,73 @@ export function ReportHero({ upload }: { upload: UploadStatus }) {
   const estSuppliers =
     upload.clusters_com_shortlist * upload.shortlist_config.size;
   const estSuppliersAnimated = useCountUp(estSuppliers);
+  const pct =
+    upload.linhas_total > 0
+      ? Math.min(100, (upload.linhas_classificadas / upload.linhas_total) * 100)
+      : 0;
 
   return (
     <section
-      className="r-rise grid grid-cols-1 gap-0 border-b r-rule pb-10 lg:grid-cols-[2fr_1fr]"
+      className="r-rise mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]"
       style={{ animationDelay: "80ms" }}
     >
-      {/* Hero — left two thirds */}
-      <div className="lg:border-r r-rule lg:pr-10">
-        <p className="r-eyebrow">Linhas classificadas</p>
-        <div className="mt-4 flex items-baseline gap-6">
-          <span className="r-serif text-[88px] italic leading-[0.9] tracking-tight text-[var(--r-ink)] sm:text-[112px]">
-            {classified.toLocaleString("pt-BR")}
-          </span>
-          <span className="r-serif text-2xl italic text-[var(--r-ink-2)]">
-            de {upload.linhas_total.toLocaleString("pt-BR")}
-          </span>
-        </div>
+      {/* Hero card */}
+      <div
+        className="r-card relative overflow-hidden p-8"
+        style={{
+          background:
+            "linear-gradient(140deg, #ffffff 0%, #f7f5ff 60%, #efeaff 100%)",
+        }}
+      >
         <div
           aria-hidden
-          className="mt-3 h-[2px] origin-left bg-[var(--r-accent)]"
+          className="pointer-events-none absolute -right-8 -top-8 h-44 w-44 rounded-full"
           style={{
-            width: `${
-              upload.linhas_total > 0
-                ? Math.min(
-                    100,
-                    (upload.linhas_classificadas / upload.linhas_total) * 100,
-                  )
-                : 0
-            }%`,
-            transition: "width 1200ms cubic-bezier(.16,1,.3,1)",
+            background:
+              "radial-gradient(closest-side, rgba(91,63,229,0.18), transparent)",
           }}
         />
+        <p className="r-eyebrow">Linhas classificadas</p>
+        <div className="mt-3 flex items-baseline gap-5">
+          <span className="r-display text-[88px] leading-[0.9] tracking-tight text-[var(--r-ink)] sm:text-[112px]">
+            {classified.toLocaleString("pt-BR")}
+          </span>
+          <span className="r-display text-2xl text-[var(--r-ink-2)]">
+            / {upload.linhas_total.toLocaleString("pt-BR")}
+          </span>
+        </div>
+        <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-[var(--r-surface-2)]">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${pct}%`,
+              background:
+                "linear-gradient(90deg, #8C84FF 0%, #5B3FE5 60%, #2C1666 100%)",
+              transition: "width 1200ms cubic-bezier(.16,1,.3,1)",
+            }}
+          />
+        </div>
+        <div className="mt-3 flex items-baseline justify-between text-xs text-[var(--r-ink-2)]">
+          <span>Progresso da classificação</span>
+          <span className="r-mono">{pct.toFixed(1)}%</span>
+        </div>
       </div>
 
-      {/* Secondary stats — right third, stacked vertically */}
-      <div className="mt-8 grid grid-cols-1 divide-y r-rule lg:mt-0 lg:pl-10">
-        <div className="pb-6 lg:pb-6">
-          <NumberCell
+      {/* Secondary cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="r-card p-6">
+          <StatCell
             label="Categorias identificadas"
             value={upload.clusters_total.toLocaleString("pt-BR")}
+            hint={`${upload.clusters_classificados} classificadas · ${upload.clusters_com_shortlist} com shortlist`}
           />
-          <p className="mt-2 text-xs text-[var(--r-ink-2)]">
-            {upload.clusters_classificados} classificadas ·{" "}
-            {upload.clusters_com_shortlist} com shortlist
-          </p>
         </div>
-        <div className="py-6">
-          <NumberCell
+        <div className="r-card p-6">
+          <StatCell
             label="Fornecedores estimados"
             value={estSuppliersAnimated.toLocaleString("pt-BR")}
+            hint={`top ${upload.shortlist_config.size} por categoria`}
           />
-          <p className="mt-2 text-xs text-[var(--r-ink-2)]">
-            top {upload.shortlist_config.size} por categoria
-          </p>
         </div>
       </div>
     </section>

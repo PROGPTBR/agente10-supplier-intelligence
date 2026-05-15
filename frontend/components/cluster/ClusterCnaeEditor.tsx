@@ -41,16 +41,16 @@ export function ClusterCnaeEditor({
         placeholder="Pesquisar por código ou descrição…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="w-full border bg-[var(--r-surface)] px-3 py-2 text-sm text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-accent)] focus:outline-none"
+        className="w-full rounded-xl border bg-[var(--r-surface)] px-3.5 py-2.5 text-sm text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--r-primary-soft)]"
         aria-label="Pesquisar CNAE"
       />
       {onDoubleClickCode && (
-        <p className="r-mono text-[10px] uppercase tracking-wider text-[var(--r-ink-3)]">
-          duplo clique adiciona/remove como alternativo
+        <p className="text-[11px] text-[var(--r-ink-3)]">
+          Duplo clique adiciona/remove como alternativo
         </p>
       )}
       <ul
-        className="max-h-64 overflow-y-auto border r-rule bg-[var(--r-surface)]"
+        className="max-h-64 overflow-y-auto rounded-xl border r-rule bg-[var(--r-surface)]"
         role="listbox"
       >
         {matches.map((c) => {
@@ -71,10 +71,10 @@ export function ClusterCnaeEditor({
               role="option"
               aria-selected={isPicked}
               tabIndex={0}
-              className="cursor-pointer px-3 py-2 text-sm transition-colors r-hover-row select-none"
+              className="cursor-pointer select-none px-3 py-2.5 text-sm transition-colors hover:bg-[var(--r-surface-2)]"
               style={
                 isPicked
-                  ? { backgroundColor: "var(--r-accent-soft)" }
+                  ? { backgroundColor: "var(--r-primary-soft)" }
                   : undefined
               }
               title={
@@ -87,15 +87,19 @@ export function ClusterCnaeEditor({
                       : undefined
               }
             >
-              <div className="flex items-baseline gap-2">
-                <span className="r-mono text-[var(--r-ink-2)]">{c.codigo}</span>
-                <span className="text-[var(--r-ink)]">{c.denominacao}</span>
+              <div className="flex items-baseline gap-3">
+                <span className="r-mono shrink-0 text-xs font-semibold text-[var(--r-ink-2)]">
+                  {c.codigo}
+                </span>
+                <span className="truncate text-[var(--r-ink)]">
+                  {c.denominacao}
+                </span>
                 {isPrimary && (
                   <span
-                    className="ml-auto shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                    className="ml-auto shrink-0 r-pill"
                     style={{
                       backgroundColor: "var(--r-ink)",
-                      color: "var(--r-bg)",
+                      color: "#fff",
                     }}
                   >
                     principal
@@ -103,10 +107,10 @@ export function ClusterCnaeEditor({
                 )}
                 {!isPrimary && isSecondary && (
                   <span
-                    className="ml-auto shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                    className="ml-auto shrink-0 r-pill"
                     style={{
-                      backgroundColor: "var(--r-accent-soft)",
-                      color: "var(--r-accent)",
+                      backgroundColor: "var(--r-primary-soft)",
+                      color: "var(--r-primary)",
                     }}
                   >
                     alternativo

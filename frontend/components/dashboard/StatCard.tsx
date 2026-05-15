@@ -1,6 +1,4 @@
 // frontend/components/dashboard/StatCard.tsx
-import { Card } from "../ui/card";
-
 export function StatCard({
   label,
   value,
@@ -11,10 +9,12 @@ export function StatCard({
   sublabel?: string;
 }) {
   return (
-    <Card className="p-6">
-      <p className="text-sm font-medium text-zinc-500">{label}</p>
-      <p className="mt-2 text-3xl font-semibold">{value}</p>
-      {sublabel && <p className="mt-1 text-xs text-zinc-500">{sublabel}</p>}
-    </Card>
+    <div className="r-card p-6">
+      <p className="r-eyebrow">{label}</p>
+      <p className="r-display mt-3 text-3xl text-[var(--r-ink)]">{value}</p>
+      {sublabel && (
+        <p className="mt-1.5 text-xs text-[var(--r-ink-2)]">{sublabel}</p>
+      )}
+    </div>
   );
 }

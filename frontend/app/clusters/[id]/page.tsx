@@ -8,13 +8,13 @@ import {
   useClustersQuery,
   useShortlistQuery,
 } from "../../../lib/api/clusters";
-import { apiDownload } from "../../../lib/api/client";
 import { ClusterReviewForm } from "../../../components/cluster/ClusterReviewForm";
 import { ShortlistTable } from "../../../components/shortlist/ShortlistTable";
 import {
   ShortlistFilters,
   type ShortlistFilterState,
 } from "../../../components/shortlist/ShortlistFilters";
+import { SelectionPanel } from "../../../components/shortlist/SelectionPanel";
 
 export default function ClusterDetailPage({
   params,
@@ -28,7 +28,7 @@ export default function ClusterDetailPage({
     uf: "",
     municipio: "",
   });
-  const [exporting, setExporting] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const shortlist = useShortlistQuery(id, cluster.data?.shortlist_gerada, {
     uf: filters.uf || undefined,
     municipio: filters.municipio || undefined,
@@ -43,7 +43,12 @@ export default function ClusterDetailPage({
       ? orderedIds[currentIdx + 1]
       : null;
 
-  // Keyboard shortcuts: ← / → navigate between siblings (ignore when typing).
+  // Reset selection on cluster change
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [id]);
+
+  // Keyboard shortcuts: ← / → navigate between siblings
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -63,7 +68,7 @@ export default function ClusterDetailPage({
 
   if (cluster.isLoading)
     return (
-      <p className="r-serif text-xl italic text-[var(--r-ink-2)]">
+      <p className="r-display text-xl text-[var(--r-ink-2)]">
         Carregando cluster…
       </p>
     );
@@ -77,8 +82,32 @@ export default function ClusterDetailPage({
   const filtered = !!(filters.uf || filters.municipio);
   const displayName = c.nome_cluster_refinado ?? c.nome_cluster;
 
+  function toggleSelect(cnpjBasico: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(cnpjBasico)) next.delete(cnpjBasico);
+      else next.add(cnpjBasico);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (!shortlist.data) return;
+    const allKeys = shortlist.data.map((e) => e.cnpj_basico);
+    const allSelected = allKeys.every((k) => selectedKeys.has(k));
+    if (allSelected) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(allKeys));
+    }
+  }
+
+  const selectedEntries = (shortlist.data ?? []).filter((e) =>
+    selectedKeys.has(e.cnpj_basico),
+  );
+
   return (
-    <div className="mx-auto max-w-6xl space-y-0">
+    <div className="mx-auto max-w-7xl">
       {/* Breadcrumb */}
       <nav className="r-eyebrow r-rise flex items-center gap-2">
         <Link
@@ -93,12 +122,12 @@ export default function ClusterDetailPage({
 
       {/* Title row */}
       <header
-        className="r-rise mt-5 flex flex-wrap items-end justify-between gap-6 border-b r-rule pb-8"
-        style={{ animationDelay: "80ms" }}
+        className="r-rise mt-5 flex flex-wrap items-end justify-between gap-6"
+        style={{ animationDelay: "60ms" }}
       >
         <div className="min-w-0 max-w-3xl space-y-2">
           <p className="r-eyebrow">Categoria</p>
-          <h1 className="r-serif text-4xl italic leading-tight tracking-tight text-[var(--r-ink)] sm:text-5xl">
+          <h1 className="r-display text-3xl leading-tight tracking-tight text-[var(--r-ink)] sm:text-4xl">
             {displayName}
           </h1>
           {c.nome_cluster_refinado &&
@@ -108,7 +137,9 @@ export default function ClusterDetailPage({
               </p>
             )}
           <p className="text-sm text-[var(--r-ink-2)]">
-            <span className="r-mono text-[var(--r-ink)]">{c.num_linhas}</span>{" "}
+            <span className="r-mono font-semibold text-[var(--r-ink)]">
+              {c.num_linhas}
+            </span>{" "}
             {c.num_linhas === 1 ? "linha" : "linhas"} agrupadas
           </p>
         </div>
@@ -120,12 +151,12 @@ export default function ClusterDetailPage({
             disabled={!prevId}
             aria-label="Cluster anterior"
             title="Cluster anterior (← seta esquerda)"
-            className="rounded-sm border border-[var(--r-rule)] bg-transparent px-3 py-1.5 text-sm text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-30"
+            className="r-btn-ghost"
           >
             ← Anterior
           </button>
           {currentIdx >= 0 && orderedIds.length > 0 && (
-            <span className="r-mono text-xs uppercase tracking-wider text-[var(--r-ink-2)]">
+            <span className="r-mono px-2 text-xs uppercase tracking-wider text-[var(--r-ink-2)]">
               {currentIdx + 1} / {orderedIds.length}
             </span>
           )}
@@ -135,33 +166,31 @@ export default function ClusterDetailPage({
             disabled={!nextId}
             aria-label="Próximo cluster"
             title="Próximo cluster (→ seta direita)"
-            className="rounded-sm border border-[var(--r-rule)] bg-transparent px-3 py-1.5 text-sm text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-30"
+            className="r-btn-ghost"
           >
             Próximo →
           </button>
         </div>
       </header>
 
-      {/* Asymmetric body — 5/12 review, 7/12 sample + shortlist */}
+      {/* Two-col body — left review, right samples */}
       <div
-        className="r-rise mt-10 grid grid-cols-1 gap-12 lg:grid-cols-12"
-        style={{ animationDelay: "160ms" }}
+        className="r-rise mt-10 grid grid-cols-1 gap-10 lg:grid-cols-12"
+        style={{ animationDelay: "140ms" }}
       >
-        {/* Left — review form */}
-        <div className="lg:col-span-5 lg:border-r r-rule lg:pr-10">
+        <div className="lg:col-span-7">
           <ClusterReviewForm cluster={c} />
         </div>
 
-        {/* Right — sample + meta */}
-        <div className="space-y-10 lg:col-span-7">
+        <div className="space-y-8 lg:col-span-5">
           {c.sample_linhas.length > 0 && (
-            <section className="space-y-3">
-              <p className="r-eyebrow">Amostra das linhas</p>
-              <ul className="space-y-1.5 border-l r-rule pl-4">
+            <section className="r-card p-6">
+              <p className="r-eyebrow mb-3">Amostra das linhas</p>
+              <ul className="space-y-2">
                 {c.sample_linhas.map((s, i) => (
                   <li
                     key={i}
-                    className="r-serif text-base italic leading-snug text-[var(--r-ink)]"
+                    className="rounded-lg bg-[var(--r-surface-2)] px-3 py-2 text-sm leading-snug text-[var(--r-ink)]"
                   >
                     {s}
                   </li>
@@ -171,9 +200,9 @@ export default function ClusterDetailPage({
           )}
 
           {c.notas_revisor && (
-            <section className="space-y-3 border-t r-rule pt-8">
+            <section className="r-card space-y-3 p-6">
               <p className="r-eyebrow">Notas anteriores</p>
-              <p className="text-sm leading-relaxed text-[var(--r-ink)] whitespace-pre-wrap">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--r-ink)]">
                 {c.notas_revisor}
               </p>
             </section>
@@ -181,54 +210,91 @@ export default function ClusterDetailPage({
         </div>
       </div>
 
-      {/* Shortlist — full width */}
-      <section
-        className="r-rise mt-16 space-y-6 border-t r-rule pt-10"
-        style={{ animationDelay: "320ms" }}
-      >
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-1">
+      {/* Shortlist — with multi-select + side panel */}
+      <section className="r-rise mt-14" style={{ animationDelay: "260ms" }}>
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+          <div>
             <p className="r-eyebrow">Shortlist de fornecedores</p>
-            <h2 className="r-serif text-2xl italic text-[var(--r-ink)]">
+            <h2 className="r-display mt-1 text-2xl text-[var(--r-ink)]">
               {filtered ? "Resultado filtrado" : "Top por capital social"}
             </h2>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <ShortlistFilters value={filters} onChange={setFilters} />
-            <button
-              type="button"
-              onClick={async () => {
-                setExporting(true);
-                try {
-                  await apiDownload(
-                    `/api/v1/clusters/${id}/shortlist.xlsx`,
-                    "shortlist.xlsx",
-                  );
-                } finally {
-                  setExporting(false);
-                }
-              }}
-              disabled={exporting || c.shortlist_gerada === false}
-              className="rounded-sm border border-[var(--r-rule)] bg-transparent px-3.5 py-1.5 text-xs font-medium text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-40"
-            >
-              {exporting ? "Exportando…" : "Exportar XLSX"}
-            </button>
-          </div>
+          <ShortlistFilters value={filters} onChange={setFilters} />
         </div>
 
         {c.shortlist_gerada === false && (
-          <p className="r-mono text-xs uppercase tracking-wider text-[var(--r-warning)]">
-            ● Regenerando shortlist…
+          <p
+            className="r-pill mb-4"
+            style={{
+              backgroundColor: "rgba(245,158,11,0.14)",
+              color: "#B45309",
+            }}
+          >
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: "#F59E0B" }}
+            />
+            Regenerando shortlist…
           </p>
         )}
-        {shortlist.isLoading && (
-          <p className="text-sm text-[var(--r-ink-2)]">
-            Carregando fornecedores…
-          </p>
-        )}
-        {shortlist.data ? (
-          <ShortlistTable clusterId={id} entries={shortlist.data} />
-        ) : null}
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="r-card overflow-hidden">
+            {shortlist.isLoading && (
+              <p className="p-6 text-sm text-[var(--r-ink-2)]">
+                Carregando fornecedores…
+              </p>
+            )}
+            {shortlist.data && (
+              <ShortlistTable
+                clusterId={id}
+                entries={shortlist.data}
+                selectedKeys={selectedKeys}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAll}
+              />
+            )}
+          </div>
+
+          <div className="lg:sticky lg:top-6 lg:self-start">
+            {selectedEntries.length === 0 ? (
+              <div className="r-card p-6 text-center">
+                <div
+                  aria-hidden
+                  className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "var(--r-primary-soft)" }}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="var(--r-primary)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+                <p className="r-display text-base text-[var(--r-ink)]">
+                  Marque fornecedores
+                </p>
+                <p className="mt-1.5 text-xs text-[var(--r-ink-2)]">
+                  Selecione com as checkboxes para ver totais e ações
+                </p>
+              </div>
+            ) : (
+              <SelectionPanel
+                clusterId={id}
+                selected={selectedEntries}
+                onClear={() => setSelectedKeys(new Set())}
+                onRemove={toggleSelect}
+              />
+            )}
+          </div>
+        </div>
       </section>
     </div>
   );

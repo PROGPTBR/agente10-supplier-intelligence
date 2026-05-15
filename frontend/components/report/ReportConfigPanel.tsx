@@ -12,7 +12,7 @@ function Row({
   mono?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-[160px_1fr] items-baseline gap-4 border-b r-rule py-3 last:border-b-0">
+    <div className="grid grid-cols-[180px_1fr] items-baseline gap-4 border-b r-rule py-3.5 last:border-b-0">
       <p className="r-eyebrow">{label}</p>
       <p className={`text-sm text-[var(--r-ink)] ${mono ? "r-mono" : ""}`}>
         {value}
@@ -33,8 +33,8 @@ function formatBRL(n: number | null): string {
 export function ReportConfigPanel({ upload }: { upload: UploadStatus }) {
   const cfg = upload.shortlist_config;
   return (
-    <div className="space-y-1 rounded-sm border r-rule bg-[var(--r-surface)] p-6">
-      <p className="r-eyebrow mb-3">Configuração aplicada na geração</p>
+    <div className="r-card p-7">
+      <p className="r-eyebrow mb-4">Configuração aplicada na geração</p>
       <Row
         label="Tamanho da shortlist"
         value={`Top ${cfg.size} por CNAE`}

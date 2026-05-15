@@ -24,12 +24,12 @@ function denomFor(code: string | null): string {
 }
 
 const METODO_LABEL: Record<string, { label: string; color: string }> = {
-  revisado_humano: { label: "Revisado humano", color: "var(--r-success)" },
-  curator: { label: "Curator (LLM)", color: "var(--r-ink)" },
-  retrieval: { label: "Retrieval", color: "var(--r-ink-2)" },
-  cache: { label: "Cache", color: "var(--r-ink-3)" },
-  golden: { label: "Golden seed", color: "var(--r-warning)" },
-  manual_pending: { label: "Pendente manual", color: "var(--r-accent)" },
+  revisado_humano: { label: "Revisado humano", color: "#10B981" },
+  curator: { label: "Curator (LLM)", color: "#5B3FE5" },
+  retrieval: { label: "Retrieval", color: "#8C84FF" },
+  cache: { label: "Cache", color: "#A4C5FF" },
+  golden: { label: "Golden seed", color: "#F59E0B" },
+  manual_pending: { label: "Pendente manual", color: "#EF4444" },
 };
 
 export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
@@ -53,14 +53,6 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
     });
   }
 
-  function replacePrimary() {
-    if (!picked) return;
-    sendPatch(
-      { cnae: picked, notas_revisor: notas || undefined },
-      "CNAE principal substituído. Shortlist regenerando…",
-    );
-  }
-
   function addAlternativeCode(code: string) {
     if (code === cluster.cnae) {
       setFeedback({ kind: "err", msg: "Já é o CNAE principal." });
@@ -79,6 +71,14 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
     );
   }
 
+  function replacePrimary() {
+    if (!picked) return;
+    sendPatch(
+      { cnae: picked, notas_revisor: notas || undefined },
+      "CNAE principal substituído. Shortlist regenerando…",
+    );
+  }
+
   function addAlternative() {
     if (!picked) return;
     addAlternativeCode(picked);
@@ -94,7 +94,7 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
   }
 
   function toggleAlternative(code: string) {
-    if (code === cluster.cnae) return; // primary protected from double-click
+    if (code === cluster.cnae) return;
     if (cluster.cnaes_secundarios.includes(code)) {
       removeAlternative(code);
     } else {
@@ -122,31 +122,39 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
   const conf = cluster.cnae_confianca;
 
   return (
-    <div className="space-y-10">
-      {/* CNAE atual — display */}
-      <section className="r-rise space-y-3">
+    <div className="space-y-7">
+      {/* CNAE atual */}
+      <section className="r-card p-6">
         <div className="flex items-baseline justify-between gap-4">
           <p className="r-eyebrow">CNAE atual</p>
           {metodoInfo && (
             <span
-              className="r-mono text-[10px] uppercase tracking-wider"
-              style={{ color: metodoInfo.color }}
+              className="r-pill"
+              style={{
+                backgroundColor: `${metodoInfo.color}1f`,
+                color: metodoInfo.color,
+              }}
             >
-              ● {metodoInfo.label}
+              <span
+                aria-hidden
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: metodoInfo.color }}
+              />
+              {metodoInfo.label}
               {conf !== null && (
-                <span className="ml-2 text-[var(--r-ink-2)]">
+                <span className="r-mono ml-1 opacity-70">
                   {(conf * 100).toFixed(0)}%
                 </span>
               )}
             </span>
           )}
         </div>
-        <div className="flex items-baseline gap-4 border-b r-rule pb-4">
-          <span className="r-serif text-5xl italic text-[var(--r-ink)]">
+        <div className="mt-4 flex items-baseline gap-4">
+          <span className="r-display text-4xl text-[var(--r-ink)]">
             {cluster.cnae ?? "—"}
           </span>
           {cluster.cnae && (
-            <span className="r-serif text-base italic text-[var(--r-ink-2)]">
+            <span className="text-sm text-[var(--r-ink-2)]">
               {denomFor(cluster.cnae)}
             </span>
           )}
@@ -155,27 +163,29 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
 
       {/* Secundários */}
       {cluster.cnaes_secundarios.length > 0 && (
-        <section
-          className="r-rise space-y-3"
-          style={{ animationDelay: "80ms" }}
-        >
-          <p className="r-eyebrow">CNAEs alternativos</p>
+        <section>
+          <p className="r-eyebrow mb-3">CNAEs alternativos</p>
           <ul className="flex flex-wrap gap-2">
             {cluster.cnaes_secundarios.map((code) => (
               <li
                 key={code}
-                className="group inline-flex items-center gap-2 border r-rule bg-[var(--r-surface)] px-3 py-1.5 text-xs"
+                className="r-pill"
+                style={{
+                  backgroundColor: "var(--r-primary-soft)",
+                  color: "var(--r-primary)",
+                  padding: "5px 12px",
+                }}
               >
-                <span className="r-mono text-[var(--r-ink)]">{code}</span>
+                <span className="r-mono font-semibold">{code}</span>
                 <span className="hidden text-[var(--r-ink-2)] sm:inline">
-                  {denomFor(code).slice(0, 40)}
-                  {denomFor(code).length > 40 ? "…" : ""}
+                  {denomFor(code).slice(0, 36)}
+                  {denomFor(code).length > 36 ? "…" : ""}
                 </span>
                 <button
                   type="button"
                   onClick={() => removeAlternative(code)}
                   disabled={patch.isPending}
-                  className="ml-1 text-[var(--r-ink-3)] transition-colors hover:text-[var(--r-danger)] disabled:opacity-40"
+                  className="ml-1 opacity-50 transition-opacity hover:opacity-100 disabled:opacity-20"
                   title="Remover alternativo"
                   aria-label={`Remover CNAE alternativo ${code}`}
                 >
@@ -188,10 +198,7 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
       )}
 
       {/* Picker + ações */}
-      <section
-        className="r-rise space-y-4 border-t r-rule pt-8"
-        style={{ animationDelay: "160ms" }}
-      >
+      <section className="space-y-4">
         <p className="r-eyebrow">Pesquisar novo CNAE</p>
         <ClusterCnaeEditor
           value={picked}
@@ -206,17 +213,17 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
             type="button"
             onClick={replacePrimary}
             disabled={patch.isPending || !picked}
-            className="rounded-sm bg-[var(--r-ink)] px-4 py-2 text-xs font-medium text-[var(--r-bg)] transition-colors hover:bg-[var(--r-accent)] disabled:opacity-40"
+            className="r-btn-primary"
             title="Substitui o CNAE principal e regenera a shortlist"
           >
-            {patch.isPending ? "Salvando…" : "Substituir CNAE principal"}
+            {patch.isPending ? "Salvando…" : "Substituir principal"}
           </button>
           <button
             type="button"
             onClick={addAlternative}
             disabled={patch.isPending || !picked}
-            className="rounded-sm border border-[var(--r-rule)] bg-transparent px-4 py-2 text-xs font-medium text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-40"
-            title="Adiciona como CNAE alternativo (mantém o atual e gera shortlist para ambos)"
+            className="r-btn-ghost"
+            title="Adiciona como CNAE alternativo (mantém o atual)"
           >
             Adicionar como alternativo
           </button>
@@ -237,10 +244,7 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
       </section>
 
       {/* Notas + revisado */}
-      <section
-        className="r-rise space-y-4 border-t r-rule pt-8"
-        style={{ animationDelay: "240ms" }}
-      >
+      <section className="r-card space-y-4 p-6">
         <p className="r-eyebrow">Notas do revisor</p>
         <textarea
           id="notas"
@@ -248,14 +252,14 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
           onChange={(e) => setNotas(e.target.value)}
           rows={3}
           placeholder="Anotações opcionais sobre a classificação…"
-          className="w-full border bg-[var(--r-surface)] px-3 py-2 text-sm text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-accent)] focus:outline-none"
+          className="w-full rounded-xl border bg-[var(--r-bg)] px-3 py-2 text-sm text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--r-primary-soft)]"
         />
         <label className="flex items-center gap-2 text-sm text-[var(--r-ink-2)]">
           <input
             type="checkbox"
             checked={revisado}
             onChange={(e) => setRevisado(e.target.checked)}
-            className="h-4 w-4 accent-[var(--r-accent)]"
+            className="h-4 w-4 rounded accent-[var(--r-primary)]"
           />
           Marcar como revisado
         </label>
@@ -263,7 +267,7 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
           type="button"
           onClick={saveOtherFields}
           disabled={patch.isPending}
-          className="rounded-sm border border-[var(--r-rule)] bg-transparent px-4 py-2 text-xs font-medium text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-40"
+          className="r-btn-ghost"
         >
           {patch.isPending ? "Salvando…" : "Salvar notas / revisado"}
         </button>

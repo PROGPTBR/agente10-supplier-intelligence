@@ -44,12 +44,12 @@ export function ShortlistFilters({
 }) {
   return (
     <div className="flex flex-wrap items-end gap-3">
-      <label className="r-eyebrow flex flex-col gap-1">
-        UF
+      <label className="flex flex-col gap-1">
+        <span className="r-eyebrow">UF</span>
         <select
           value={value.uf}
           onChange={(e) => onChange({ ...value, uf: e.target.value })}
-          className="r-mono mt-1 border bg-[var(--r-surface)] px-2 py-1 text-xs text-[var(--r-ink)] r-rule focus:border-[var(--r-accent)] focus:outline-none"
+          className="r-mono rounded-lg border bg-[var(--r-surface)] px-3 py-2 text-xs text-[var(--r-ink)] r-rule focus:border-[var(--r-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--r-primary-soft)]"
         >
           <option value="">— todas —</option>
           {UFS.map((u) => (
@@ -59,21 +59,21 @@ export function ShortlistFilters({
           ))}
         </select>
       </label>
-      <label className="r-eyebrow flex flex-col gap-1">
-        Município
+      <label className="flex flex-col gap-1">
+        <span className="r-eyebrow">Município</span>
         <input
           type="text"
           value={value.municipio}
           onChange={(e) => onChange({ ...value, municipio: e.target.value })}
           placeholder="ex: SAO PAULO"
-          className="mt-1 border bg-[var(--r-surface)] px-2 py-1 text-xs text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-accent)] focus:outline-none"
+          className="rounded-lg border bg-[var(--r-surface)] px-3 py-2 text-xs text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--r-primary-soft)]"
         />
       </label>
       {(value.uf || value.municipio) && (
         <button
           type="button"
           onClick={() => onChange({ uf: "", municipio: "" })}
-          className="rounded-sm border border-[var(--r-rule)] bg-transparent px-2 py-1 text-[10px] uppercase tracking-wider text-[var(--r-ink-2)] hover:bg-[var(--r-accent-soft)]"
+          className="r-btn-ghost text-[10px] uppercase tracking-wider"
         >
           Limpar
         </button>
