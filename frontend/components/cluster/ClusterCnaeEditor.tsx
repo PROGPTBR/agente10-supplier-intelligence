@@ -13,9 +13,15 @@ const ALL_CNAES = cnaeData as Cnae[];
 export function ClusterCnaeEditor({
   value,
   onChange,
+  currentPrimary,
+  currentSecondaries,
+  onDoubleClickCode,
 }: {
   value: string | null;
   onChange: (next: string) => void;
+  currentPrimary?: string | null;
+  currentSecondaries?: string[];
+  onDoubleClickCode?: (code: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const matches = useMemo(() => {
@@ -26,41 +32,92 @@ export function ClusterCnaeEditor({
     ).slice(0, 20);
   }, [query]);
 
+  const secSet = new Set(currentSecondaries ?? []);
+
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-zinc-700">CNAE</label>
       <input
         type="search"
         placeholder="Pesquisar por código ou descrição…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+        className="w-full border bg-[var(--r-surface)] px-3 py-2 text-sm text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-accent)] focus:outline-none"
         aria-label="Pesquisar CNAE"
       />
+      {onDoubleClickCode && (
+        <p className="r-mono text-[10px] uppercase tracking-wider text-[var(--r-ink-3)]">
+          duplo clique adiciona/remove como alternativo
+        </p>
+      )}
       <ul
-        className="max-h-64 overflow-y-auto rounded-md border border-zinc-200"
+        className="max-h-64 overflow-y-auto border r-rule bg-[var(--r-surface)]"
         role="listbox"
       >
-        {matches.map((c) => (
-          <li
-            key={c.codigo}
-            onClick={() => onChange(c.codigo)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onChange(c.codigo);
-            }}
-            role="option"
-            aria-selected={value === c.codigo}
-            tabIndex={0}
-            className={`cursor-pointer px-3 py-2 text-sm hover:bg-zinc-50 ${
-              value === c.codigo ? "bg-emerald-50" : ""
-            }`}
-          >
-            <span className="font-mono text-zinc-600">{c.codigo}</span>{" "}
-            <span className="text-zinc-900">{c.denominacao}</span>
-          </li>
-        ))}
+        {matches.map((c) => {
+          const isPrimary = c.codigo === currentPrimary;
+          const isSecondary = secSet.has(c.codigo);
+          const isPicked = value === c.codigo;
+          return (
+            <li
+              key={c.codigo}
+              onClick={() => onChange(c.codigo)}
+              onDoubleClick={() => {
+                if (isPrimary) return;
+                onDoubleClickCode?.(c.codigo);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onChange(c.codigo);
+              }}
+              role="option"
+              aria-selected={isPicked}
+              tabIndex={0}
+              className="cursor-pointer px-3 py-2 text-sm transition-colors r-hover-row select-none"
+              style={
+                isPicked
+                  ? { backgroundColor: "var(--r-accent-soft)" }
+                  : undefined
+              }
+              title={
+                isPrimary
+                  ? "É o CNAE principal"
+                  : isSecondary
+                    ? "Já alternativo — duplo clique remove"
+                    : onDoubleClickCode
+                      ? "Duplo clique adiciona como alternativo"
+                      : undefined
+              }
+            >
+              <div className="flex items-baseline gap-2">
+                <span className="r-mono text-[var(--r-ink-2)]">{c.codigo}</span>
+                <span className="text-[var(--r-ink)]">{c.denominacao}</span>
+                {isPrimary && (
+                  <span
+                    className="ml-auto shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                    style={{
+                      backgroundColor: "var(--r-ink)",
+                      color: "var(--r-bg)",
+                    }}
+                  >
+                    principal
+                  </span>
+                )}
+                {!isPrimary && isSecondary && (
+                  <span
+                    className="ml-auto shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider"
+                    style={{
+                      backgroundColor: "var(--r-accent-soft)",
+                      color: "var(--r-accent)",
+                    }}
+                  >
+                    alternativo
+                  </span>
+                )}
+              </div>
+            </li>
+          );
+        })}
         {matches.length === 0 && (
-          <li className="px-3 py-2 text-sm text-zinc-500">
+          <li className="px-3 py-2 text-sm text-[var(--r-ink-2)]">
             Nenhum CNAE encontrado.
           </li>
         )}

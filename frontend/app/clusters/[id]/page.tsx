@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { use, useState } from "react";
+import { useRouter } from "next/navigation";
+import { use, useEffect, useState } from "react";
 import {
   useClusterDetailQuery,
+  useClustersQuery,
   useShortlistQuery,
 } from "../../../lib/api/clusters";
 import { apiDownload } from "../../../lib/api/client";
@@ -20,6 +22,7 @@ export default function ClusterDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const cluster = useClusterDetailQuery(id);
   const [filters, setFilters] = useState<ShortlistFilterState>({
     uf: "",
@@ -30,6 +33,33 @@ export default function ClusterDetailPage({
     uf: filters.uf || undefined,
     municipio: filters.municipio || undefined,
   });
+  const uploadId = cluster.data?.upload_id ?? "";
+  const siblings = useClustersQuery(uploadId, {}, { enabled: !!uploadId });
+  const orderedIds = siblings.data?.map((s) => s.id) ?? [];
+  const currentIdx = orderedIds.indexOf(id);
+  const prevId = currentIdx > 0 ? orderedIds[currentIdx - 1] : null;
+  const nextId =
+    currentIdx >= 0 && currentIdx < orderedIds.length - 1
+      ? orderedIds[currentIdx + 1]
+      : null;
+
+  // Keyboard shortcuts: ← / → navigate between siblings (ignore when typing).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const isEditable =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+      if (isEditable) return;
+      if (e.key === "ArrowLeft" && prevId) router.push(`/clusters/${prevId}`);
+      if (e.key === "ArrowRight" && nextId) router.push(`/clusters/${nextId}`);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [prevId, nextId, router]);
 
   if (cluster.isLoading)
     return (
@@ -81,6 +111,34 @@ export default function ClusterDetailPage({
             <span className="r-mono text-[var(--r-ink)]">{c.num_linhas}</span>{" "}
             {c.num_linhas === 1 ? "linha" : "linhas"} agrupadas
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => prevId && router.push(`/clusters/${prevId}`)}
+            disabled={!prevId}
+            aria-label="Cluster anterior"
+            title="Cluster anterior (← seta esquerda)"
+            className="rounded-sm border border-[var(--r-rule)] bg-transparent px-3 py-1.5 text-sm text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-30"
+          >
+            ← Anterior
+          </button>
+          {currentIdx >= 0 && orderedIds.length > 0 && (
+            <span className="r-mono text-xs uppercase tracking-wider text-[var(--r-ink-2)]">
+              {currentIdx + 1} / {orderedIds.length}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => nextId && router.push(`/clusters/${nextId}`)}
+            disabled={!nextId}
+            aria-label="Próximo cluster"
+            title="Próximo cluster (→ seta direita)"
+            className="rounded-sm border border-[var(--r-rule)] bg-transparent px-3 py-1.5 text-sm text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-30"
+          >
+            Próximo →
+          </button>
         </div>
       </header>
 

@@ -61,23 +61,27 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
     );
   }
 
-  function addAlternative() {
-    if (!picked) return;
-    if (picked === cluster.cnae) {
+  function addAlternativeCode(code: string) {
+    if (code === cluster.cnae) {
       setFeedback({ kind: "err", msg: "Já é o CNAE principal." });
       return;
     }
-    if (cluster.cnaes_secundarios.includes(picked)) {
+    if (cluster.cnaes_secundarios.includes(code)) {
       setFeedback({ kind: "err", msg: "Já está nos alternativos." });
       return;
     }
     sendPatch(
       {
-        cnaes_secundarios: [...cluster.cnaes_secundarios, picked],
+        cnaes_secundarios: [...cluster.cnaes_secundarios, code],
         notas_revisor: notas || undefined,
       },
       "CNAE alternativo adicionado. Shortlist regenerando…",
     );
+  }
+
+  function addAlternative() {
+    if (!picked) return;
+    addAlternativeCode(picked);
   }
 
   function removeAlternative(code: string) {
@@ -87,6 +91,15 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
       },
       "Alternativo removido. Shortlist regenerando…",
     );
+  }
+
+  function toggleAlternative(code: string) {
+    if (code === cluster.cnae) return; // primary protected from double-click
+    if (cluster.cnaes_secundarios.includes(code)) {
+      removeAlternative(code);
+    } else {
+      addAlternativeCode(code);
+    }
   }
 
   function saveOtherFields() {
@@ -180,7 +193,13 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
         style={{ animationDelay: "160ms" }}
       >
         <p className="r-eyebrow">Pesquisar novo CNAE</p>
-        <ClusterCnaeEditor value={picked} onChange={setPicked} />
+        <ClusterCnaeEditor
+          value={picked}
+          onChange={setPicked}
+          currentPrimary={cluster.cnae}
+          currentSecondaries={cluster.cnaes_secundarios}
+          onDoubleClickCode={toggleAlternative}
+        />
 
         <div className="flex flex-wrap items-center gap-3">
           <button
