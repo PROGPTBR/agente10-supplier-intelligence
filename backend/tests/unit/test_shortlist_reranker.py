@@ -3,11 +3,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from agente10.curator import shortlist_reranker
 from agente10.curator.shortlist_reranker import RankedSupplier, rerank_top10
 from agente10.empresas.discovery import EmpresaCandidate
 
 
-def _candidate(cnpj: str, capital: int = 1_000_000) -> EmpresaCandidate:
+def _candidate(cnpj: str) -> EmpresaCandidate:
     return EmpresaCandidate(
         cnpj=cnpj,
         razao_social=f"EMP {cnpj}",
@@ -21,26 +22,29 @@ def _candidate(cnpj: str, capital: int = 1_000_000) -> EmpresaCandidate:
 
 
 @pytest.mark.asyncio
-async def test_reranker_returns_top10_in_order():
+async def test_reranker_returns_top_in_voyage_order(monkeypatch):
+    """Voyage rerank-2.5 returns (index, score) pairs in best-first order.
+    rerank_top10 must map those indices back to the original candidates and
+    emit RankedSupplier objects with sequential ranks starting at 1.
+    """
     candidates = [_candidate(str(i).zfill(14)) for i in range(25)]
-    client = AsyncMock()
-    client.ask_json.return_value = [
-        {"cnpj": str(i).zfill(14), "rank": i + 1, "reasoning": f"r{i}"} for i in range(10)
-    ]
-    top10 = await rerank_top10(client, "parafusos m8", candidates)
-    assert len(top10) == 10
-    assert isinstance(top10[0], RankedSupplier)
-    assert top10[0].cnpj == "00000000000000"
-    assert top10[0].rank == 1
-    assert top10[9].rank == 10
+    # Voyage hands back indices 24,23,...,15 (reverse order) — verifies we
+    # actually use the indices instead of returning candidates in input order.
+    fake_pairs = [(24 - i, 0.9 - 0.01 * i) for i in range(10)]
+    voyage_mock = AsyncMock()
+    voyage_mock.rerank.return_value = fake_pairs
+    monkeypatch.setattr(shortlist_reranker, "VoyageClient", lambda: voyage_mock)
+
+    top = await rerank_top10(None, "parafusos m8", candidates)  # type: ignore[arg-type]
+    assert len(top) == 10
+    assert isinstance(top[0], RankedSupplier)
+    assert top[0].cnpj == candidates[24].cnpj
+    assert top[0].rank == 1
+    assert top[9].cnpj == candidates[15].cnpj
+    assert top[9].rank == 10
 
 
 @pytest.mark.asyncio
-async def test_reranker_validates_all_cnpjs_in_input():
-    candidates = [_candidate(str(i).zfill(14)) for i in range(5)]
-    client = AsyncMock()
-    client.ask_json.return_value = [
-        {"cnpj": "99999999999999", "rank": 1, "reasoning": "fake"},
-    ]
-    with pytest.raises(ValueError, match="not in input candidates"):
-        await rerank_top10(client, "x", candidates)
+async def test_reranker_empty_input_returns_empty():
+    """Short-circuit before instantiating VoyageClient — keeps the cheap path cheap."""
+    assert await rerank_top10(None, "x", []) == []  # type: ignore[arg-type]

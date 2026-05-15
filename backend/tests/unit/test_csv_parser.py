@@ -37,10 +37,19 @@ def test_missing_required_column_raises():
         list(parse_catalog_bytes(csv, "c.csv"))
 
 
-def test_empty_descricao_raises():
-    csv = b"descricao_original\n\nParafuso\n"
+def test_empty_descricao_raises_when_row_has_other_content():
+    # Row 2 has empty descricao but a value in another column → genuine error,
+    # not a trailing-blank artifact from Excel-saved CSVs.
+    csv = b"descricao_original,obs\n,note\nParafuso,ok\n"
     with pytest.raises(CsvParseError, match="line 2"):
         list(parse_catalog_bytes(csv, "c.csv"))
+
+
+def test_entirely_blank_row_is_skipped():
+    # Excel often appends trailing blank rows; parser must skip them silently.
+    csv = b"descricao_original\n\nParafuso\n"
+    [row] = list(parse_catalog_bytes(csv, "c.csv"))
+    assert row.descricao_original == "Parafuso"
 
 
 def test_cp1252_encoding_auto_detected():
