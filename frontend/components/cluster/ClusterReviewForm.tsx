@@ -1,14 +1,36 @@
 "use client";
 
 import { useState } from "react";
+import cnaeData from "../../lib/cnae-taxonomy.json";
 import type { ClusterDetail } from "../../lib/types";
 import {
   usePatchClusterMutation,
   type ClusterPatchBody,
 } from "../../lib/api/clusters";
 import { ClusterCnaeEditor } from "./ClusterCnaeEditor";
-import { ConfidenceBadge } from "./ConfidenceBadge";
-import { Button } from "../ui/button";
+
+interface CnaeRef {
+  codigo: string;
+  denominacao: string;
+}
+
+const CNAE_BY_CODE = new Map<string, string>(
+  (cnaeData as CnaeRef[]).map((c) => [c.codigo, c.denominacao]),
+);
+
+function denomFor(code: string | null): string {
+  if (!code) return "";
+  return CNAE_BY_CODE.get(code) ?? "";
+}
+
+const METODO_LABEL: Record<string, { label: string; color: string }> = {
+  revisado_humano: { label: "Revisado humano", color: "var(--r-success)" },
+  curator: { label: "Curator (LLM)", color: "var(--r-ink)" },
+  retrieval: { label: "Retrieval", color: "var(--r-ink-2)" },
+  cache: { label: "Cache", color: "var(--r-ink-3)" },
+  golden: { label: "Golden seed", color: "var(--r-warning)" },
+  manual_pending: { label: "Pendente manual", color: "var(--r-accent)" },
+};
 
 export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
   const [picked, setPicked] = useState<string | null>(null);
@@ -42,10 +64,7 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
   function addAlternative() {
     if (!picked) return;
     if (picked === cluster.cnae) {
-      setFeedback({
-        kind: "err",
-        msg: "Já é o CNAE principal.",
-      });
+      setFeedback({ kind: "err", msg: "Já é o CNAE principal." });
       return;
     }
     if (cluster.cnaes_secundarios.includes(picked)) {
@@ -81,131 +100,155 @@ export function ClusterReviewForm({ cluster }: { cluster: ClusterDetail }) {
     sendPatch(body, "Salvo.");
   }
 
+  const metodoInfo = cluster.cnae_metodo
+    ? METODO_LABEL[cluster.cnae_metodo] ?? {
+        label: cluster.cnae_metodo,
+        color: "var(--r-ink-2)",
+      }
+    : null;
+  const conf = cluster.cnae_confianca;
+
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm font-medium text-zinc-700">Cluster</p>
-        <p className="text-lg font-semibold">
-          {cluster.nome_cluster_refinado ?? cluster.nome_cluster}
-        </p>
-        {cluster.nome_cluster_refinado &&
-          cluster.nome_cluster_refinado !== cluster.nome_cluster && (
-            <p className="text-xs text-zinc-500">
-              Nome bruto do clusterizador:{" "}
-              <span className="font-mono">{cluster.nome_cluster}</span>
-            </p>
+    <div className="space-y-10">
+      {/* CNAE atual — display */}
+      <section className="r-rise space-y-3">
+        <div className="flex items-baseline justify-between gap-4">
+          <p className="r-eyebrow">CNAE atual</p>
+          {metodoInfo && (
+            <span
+              className="r-mono text-[10px] uppercase tracking-wider"
+              style={{ color: metodoInfo.color }}
+            >
+              ● {metodoInfo.label}
+              {conf !== null && (
+                <span className="ml-2 text-[var(--r-ink-2)]">
+                  {(conf * 100).toFixed(0)}%
+                </span>
+              )}
+            </span>
           )}
-        <p className="mt-1 text-xs text-zinc-500">
-          {cluster.num_linhas} linhas
-        </p>
-      </div>
-
-      {cluster.sample_linhas.length > 0 && (
-        <div>
-          <p className="text-sm font-medium text-zinc-700">Amostra de linhas</p>
-          <ul className="mt-1 list-disc pl-5 text-sm text-zinc-700">
-            {cluster.sample_linhas.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
         </div>
-      )}
+        <div className="flex items-baseline gap-4 border-b r-rule pb-4">
+          <span className="r-serif text-5xl italic text-[var(--r-ink)]">
+            {cluster.cnae ?? "—"}
+          </span>
+          {cluster.cnae && (
+            <span className="r-serif text-base italic text-[var(--r-ink-2)]">
+              {denomFor(cluster.cnae)}
+            </span>
+          )}
+        </div>
+      </section>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-zinc-700">CNAE atual:</span>
-        <span className="font-mono text-sm">{cluster.cnae ?? "—"}</span>
-        <ConfidenceBadge
-          metodo={cluster.cnae_metodo}
-          confianca={cluster.cnae_confianca}
-        />
-      </div>
-
+      {/* Secundários */}
       {cluster.cnaes_secundarios.length > 0 && (
-        <div>
-          <p className="text-sm font-medium text-zinc-700">
-            CNAEs alternativos
-          </p>
-          <div className="mt-1 flex flex-wrap gap-2">
+        <section
+          className="r-rise space-y-3"
+          style={{ animationDelay: "80ms" }}
+        >
+          <p className="r-eyebrow">CNAEs alternativos</p>
+          <ul className="flex flex-wrap gap-2">
             {cluster.cnaes_secundarios.map((code) => (
-              <span
+              <li
                 key={code}
-                className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs"
+                className="group inline-flex items-center gap-2 border r-rule bg-[var(--r-surface)] px-3 py-1.5 text-xs"
               >
-                <span className="font-mono">{code}</span>
+                <span className="r-mono text-[var(--r-ink)]">{code}</span>
+                <span className="hidden text-[var(--r-ink-2)] sm:inline">
+                  {denomFor(code).slice(0, 40)}
+                  {denomFor(code).length > 40 ? "…" : ""}
+                </span>
                 <button
                   type="button"
                   onClick={() => removeAlternative(code)}
                   disabled={patch.isPending}
-                  className="text-zinc-500 hover:text-red-600 disabled:opacity-50"
+                  className="ml-1 text-[var(--r-ink-3)] transition-colors hover:text-[var(--r-danger)] disabled:opacity-40"
                   title="Remover alternativo"
                   aria-label={`Remover CNAE alternativo ${code}`}
                 >
                   ×
                 </button>
-              </span>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
       )}
 
-      <ClusterCnaeEditor value={picked} onChange={setPicked} />
+      {/* Picker + ações */}
+      <section
+        className="r-rise space-y-4 border-t r-rule pt-8"
+        style={{ animationDelay: "160ms" }}
+      >
+        <p className="r-eyebrow">Pesquisar novo CNAE</p>
+        <ClusterCnaeEditor value={picked} onChange={setPicked} />
 
-      <div className="flex flex-wrap gap-3">
-        <Button
-          onClick={replacePrimary}
-          disabled={patch.isPending || !picked}
-          title="Substitui o CNAE principal e regenera a shortlist"
-        >
-          {patch.isPending ? "Salvando…" : "Substituir CNAE atual"}
-        </Button>
-        <Button
-          onClick={addAlternative}
-          disabled={patch.isPending || !picked}
-          title="Adiciona como CNAE alternativo (mantém o atual e gera shortlist para ambos)"
-        >
-          {patch.isPending ? "Salvando…" : "Adicionar como alternativo"}
-        </Button>
-        {feedback && (
-          <span
-            className={`self-center text-sm ${
-              feedback.kind === "ok" ? "text-emerald-700" : "text-red-600"
-            }`}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={replacePrimary}
+            disabled={patch.isPending || !picked}
+            className="rounded-sm bg-[var(--r-ink)] px-4 py-2 text-xs font-medium text-[var(--r-bg)] transition-colors hover:bg-[var(--r-accent)] disabled:opacity-40"
+            title="Substitui o CNAE principal e regenera a shortlist"
           >
-            {feedback.msg}
-          </span>
-        )}
-      </div>
+            {patch.isPending ? "Salvando…" : "Substituir CNAE principal"}
+          </button>
+          <button
+            type="button"
+            onClick={addAlternative}
+            disabled={patch.isPending || !picked}
+            className="rounded-sm border border-[var(--r-rule)] bg-transparent px-4 py-2 text-xs font-medium text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-40"
+            title="Adiciona como CNAE alternativo (mantém o atual e gera shortlist para ambos)"
+          >
+            Adicionar como alternativo
+          </button>
+          {feedback && (
+            <span
+              className="text-xs"
+              style={{
+                color:
+                  feedback.kind === "ok"
+                    ? "var(--r-success)"
+                    : "var(--r-danger)",
+              }}
+            >
+              {feedback.msg}
+            </span>
+          )}
+        </div>
+      </section>
 
-      <div>
-        <label
-          htmlFor="notas"
-          className="block text-sm font-medium text-zinc-700"
-        >
-          Notas do revisor
-        </label>
+      {/* Notas + revisado */}
+      <section
+        className="r-rise space-y-4 border-t r-rule pt-8"
+        style={{ animationDelay: "240ms" }}
+      >
+        <p className="r-eyebrow">Notas do revisor</p>
         <textarea
           id="notas"
           value={notas}
           onChange={(e) => setNotas(e.target.value)}
           rows={3}
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          placeholder="Anotações opcionais sobre a classificação…"
+          className="w-full border bg-[var(--r-surface)] px-3 py-2 text-sm text-[var(--r-ink)] r-rule placeholder:text-[var(--r-ink-3)] focus:border-[var(--r-accent)] focus:outline-none"
         />
-      </div>
-
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={revisado}
-          onChange={(e) => setRevisado(e.target.checked)}
-        />
-        Marcar como revisado
-      </label>
-
-      <div>
-        <Button onClick={saveOtherFields} disabled={patch.isPending}>
+        <label className="flex items-center gap-2 text-sm text-[var(--r-ink-2)]">
+          <input
+            type="checkbox"
+            checked={revisado}
+            onChange={(e) => setRevisado(e.target.checked)}
+            className="h-4 w-4 accent-[var(--r-accent)]"
+          />
+          Marcar como revisado
+        </label>
+        <button
+          type="button"
+          onClick={saveOtherFields}
+          disabled={patch.isPending}
+          className="rounded-sm border border-[var(--r-rule)] bg-transparent px-4 py-2 text-xs font-medium text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-40"
+        >
           {patch.isPending ? "Salvando…" : "Salvar notas / revisado"}
-        </Button>
-      </div>
+        </button>
+      </section>
     </div>
   );
 }

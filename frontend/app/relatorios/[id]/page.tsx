@@ -45,7 +45,7 @@ export default function ReportPage({
   );
 
   return (
-    <div className="report-page -m-8 min-h-screen p-8 lg:p-12">
+    <div className="-m-8 min-h-screen p-8 lg:p-12">
       <div className="mx-auto max-w-6xl space-y-0">
         {upload.isLoading && (
           <p className="r-serif text-xl italic text-[var(--r-ink-2)]">

@@ -130,15 +130,17 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Report page theme — editorial / boardroom.
-   Scoped to `.report-page` so it doesn't bleed to other routes.
+   Editorial / boardroom theme — applied globally so every route
+   feels coherent. Tokens prefixed `--r-*` to avoid clobbering
+   shadcn defaults; utility classes `.r-*` are opt-in.
    ───────────────────────────────────────────────────────────── */
 
-.report-page {
+:root {
   --r-bg: #faf7f2;
   --r-surface: #ffffff;
   --r-ink: #0f0f0e;
   --r-ink-2: #5a574f;
+  --r-ink-3: #8a8478;
   --r-rule: #e8e2d5;
   --r-accent: #e85d04;
   --r-accent-soft: rgba(232, 93, 4, 0.16);
@@ -148,25 +150,26 @@
   --r-serif: var(--font-instrument-serif), "Iowan Old Style", Georgia, serif;
   --r-sans: var(--font-geist-sans), system-ui, sans-serif;
   --r-mono: var(--font-geist-mono), "JetBrains Mono", monospace;
+}
+
+body {
   background-color: var(--r-bg);
   background-image: url("/noise.svg");
   background-repeat: repeat;
   color: var(--r-ink);
-  font-family: var(--r-sans);
-  min-height: 100%;
 }
 
-.report-page .r-serif {
+.r-serif {
   font-family: var(--r-serif);
   font-feature-settings: "ss01", "kern";
 }
 
-.report-page .r-mono {
+.r-mono {
   font-family: var(--r-mono);
   font-feature-settings: "tnum", "zero";
 }
 
-.report-page .r-eyebrow {
+.r-eyebrow {
   font-family: var(--r-sans);
   font-size: 10.5px;
   font-weight: 600;
@@ -175,11 +178,11 @@
   color: var(--r-ink-2);
 }
 
-.report-page .r-rule {
+.r-rule {
   border-color: var(--r-rule);
 }
 
-.report-page .r-hover-row:hover {
+.r-hover-row:hover {
   background-color: var(--r-accent-soft);
 }
 
@@ -194,12 +197,12 @@
   }
 }
 
-.report-page .r-rise {
+.r-rise {
   animation: r-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .report-page .r-rise {
+  .r-rise {
     animation: none;
   }
 }

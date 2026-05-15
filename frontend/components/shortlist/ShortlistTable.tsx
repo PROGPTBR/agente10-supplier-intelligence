@@ -24,7 +24,7 @@ export function ShortlistTable({
 
   if (entries.length === 0) {
     return (
-      <p className="text-sm text-zinc-500">
+      <p className="r-serif text-base italic text-[var(--r-ink-2)]">
         Nenhum fornecedor encontrado com os filtros atuais.
       </p>
     );
@@ -39,24 +39,24 @@ export function ShortlistTable({
       className="w-full border-separate border-spacing-0 text-sm"
       aria-label="Shortlist de fornecedores"
     >
-      <thead className="text-left text-xs text-zinc-500">
+      <thead>
         <tr>
-          <th scope="col" className="border-b border-zinc-200 pb-2">
+          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
             #
           </th>
-          <th scope="col" className="border-b border-zinc-200 pb-2">
+          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
             Empresa
           </th>
-          <th scope="col" className="border-b border-zinc-200 pb-2">
+          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
             CNPJ (matriz)
           </th>
-          <th scope="col" className="border-b border-zinc-200 pb-2">
+          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
             Filiais
           </th>
-          <th scope="col" className="border-b border-zinc-200 pb-2">
+          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
             Capital
           </th>
-          <th scope="col" className="border-b border-zinc-200 pb-2">
+          <th scope="col" className="r-eyebrow border-b r-rule pb-3 text-left">
             UF / Município
           </th>
         </tr>
@@ -68,40 +68,47 @@ export function ShortlistTable({
             <Fragment key={e.cnpj_basico}>
               <tr
                 onClick={() => toggle(e.cnpj_basico)}
-                className="cursor-pointer hover:bg-zinc-50"
+                className="r-hover-row cursor-pointer transition-colors"
               >
-                <td className="border-b border-zinc-100 py-2 text-zinc-500">
+                <td className="r-mono border-b r-rule py-3 text-[var(--r-ink-3)]">
                   {e.rank_estagio3}
                 </td>
-                <td className="border-b border-zinc-100 py-2">
-                  <span className="font-medium text-zinc-900">
+                <td className="border-b r-rule py-3">
+                  <span className="r-serif text-base italic text-[var(--r-ink)]">
                     {e.nome_fantasia ?? e.razao_social}
                   </span>
                   {e.nome_fantasia && (
-                    <span className="block text-xs text-zinc-500">
+                    <span className="block text-xs text-[var(--r-ink-2)]">
                       {e.razao_social}
                     </span>
                   )}
                 </td>
-                <td className="border-b border-zinc-100 py-2 font-mono text-xs text-zinc-700">
+                <td className="r-mono border-b r-rule py-3 text-xs text-[var(--r-ink)]">
                   {e.cnpj}
                 </td>
-                <td className="border-b border-zinc-100 py-2 text-zinc-700">
-                  <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs">
-                    {e.filiais_count}{" "}
+                <td className="border-b r-rule py-3 text-[var(--r-ink-2)]">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="r-mono text-[var(--r-ink)]">
+                      {e.filiais_count}
+                    </span>
                     {e.filiais_count === 1 ? "filial" : "filiais"}
                   </span>
-                  <span className="ml-2 text-xs text-zinc-400">
+                  <span
+                    className="ml-2 text-xs"
+                    style={{ color: "var(--r-ink-3)" }}
+                  >
                     {isOpen ? "▼" : "▶"}
                   </span>
                 </td>
-                <td className="border-b border-zinc-100 py-2 text-zinc-700">
+                <td className="r-mono border-b r-rule py-3 text-xs text-[var(--r-ink)]">
                   {formatBRL(e.capital_social)}
                 </td>
-                <td className="border-b border-zinc-100 py-2 text-zinc-700">
-                  {e.uf ?? "—"}
+                <td className="border-b r-rule py-3 text-[var(--r-ink-2)]">
+                  <span className="r-mono text-[var(--r-ink)]">
+                    {e.uf ?? "—"}
+                  </span>
                   {e.municipio && (
-                    <span className="block text-xs text-zinc-500">
+                    <span className="block text-xs text-[var(--r-ink-2)]">
                       {e.municipio}
                     </span>
                   )}
@@ -109,7 +116,7 @@ export function ShortlistTable({
               </tr>
               {isOpen && (
                 <tr>
-                  <td colSpan={6} className="border-b border-zinc-100">
+                  <td colSpan={6} className="border-b r-rule">
                     <FiliaisPanel
                       clusterId={clusterId}
                       cnpjBasico={e.cnpj_basico}

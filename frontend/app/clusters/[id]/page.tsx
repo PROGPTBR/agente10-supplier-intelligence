@@ -32,30 +32,110 @@ export default function ClusterDetailPage({
   });
 
   if (cluster.isLoading)
-    return <p className="text-sm text-zinc-500">Carregando…</p>;
+    return (
+      <p className="r-serif text-xl italic text-[var(--r-ink-2)]">
+        Carregando cluster…
+      </p>
+    );
   if (cluster.error || !cluster.data) {
-    return <p className="text-sm text-red-600">Cluster não encontrado.</p>;
+    return (
+      <p className="text-sm text-[var(--r-danger)]">Cluster não encontrado.</p>
+    );
   }
+
+  const c = cluster.data;
+  const filtered = !!(filters.uf || filters.municipio);
+  const displayName = c.nome_cluster_refinado ?? c.nome_cluster;
+
   return (
-    <div className="space-y-8">
-      <div>
+    <div className="mx-auto max-w-6xl space-y-0">
+      {/* Breadcrumb */}
+      <nav className="r-eyebrow r-rise flex items-center gap-2">
         <Link
-          href={`/uploads/${cluster.data.upload_id}`}
-          className="text-sm text-zinc-500 hover:underline"
+          href={`/relatorios/${c.upload_id}`}
+          className="hover:text-[var(--r-ink)] transition-colors"
         >
-          ← Voltar ao upload
+          ← Relatório
         </Link>
+        <span aria-hidden>›</span>
+        <span className="text-[var(--r-ink)]">Cluster</span>
+      </nav>
+
+      {/* Title row */}
+      <header
+        className="r-rise mt-5 flex flex-wrap items-end justify-between gap-6 border-b r-rule pb-8"
+        style={{ animationDelay: "80ms" }}
+      >
+        <div className="min-w-0 max-w-3xl space-y-2">
+          <p className="r-eyebrow">Categoria</p>
+          <h1 className="r-serif text-4xl italic leading-tight tracking-tight text-[var(--r-ink)] sm:text-5xl">
+            {displayName}
+          </h1>
+          {c.nome_cluster_refinado &&
+            c.nome_cluster_refinado !== c.nome_cluster && (
+              <p className="r-mono text-xs text-[var(--r-ink-3)]">
+                bruto · {c.nome_cluster}
+              </p>
+            )}
+          <p className="text-sm text-[var(--r-ink-2)]">
+            <span className="r-mono text-[var(--r-ink)]">{c.num_linhas}</span>{" "}
+            {c.num_linhas === 1 ? "linha" : "linhas"} agrupadas
+          </p>
+        </div>
+      </header>
+
+      {/* Asymmetric body — 5/12 review, 7/12 sample + shortlist */}
+      <div
+        className="r-rise mt-10 grid grid-cols-1 gap-12 lg:grid-cols-12"
+        style={{ animationDelay: "160ms" }}
+      >
+        {/* Left — review form */}
+        <div className="lg:col-span-5 lg:border-r r-rule lg:pr-10">
+          <ClusterReviewForm cluster={c} />
+        </div>
+
+        {/* Right — sample + meta */}
+        <div className="space-y-10 lg:col-span-7">
+          {c.sample_linhas.length > 0 && (
+            <section className="space-y-3">
+              <p className="r-eyebrow">Amostra das linhas</p>
+              <ul className="space-y-1.5 border-l r-rule pl-4">
+                {c.sample_linhas.map((s, i) => (
+                  <li
+                    key={i}
+                    className="r-serif text-base italic leading-snug text-[var(--r-ink)]"
+                  >
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {c.notas_revisor && (
+            <section className="space-y-3 border-t r-rule pt-8">
+              <p className="r-eyebrow">Notas anteriores</p>
+              <p className="text-sm leading-relaxed text-[var(--r-ink)] whitespace-pre-wrap">
+                {c.notas_revisor}
+              </p>
+            </section>
+          )}
+        </div>
       </div>
-      <ClusterReviewForm cluster={cluster.data} />
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-lg font-medium">
-            Shortlist de fornecedores
-            {filters.uf || filters.municipio
-              ? " (filtrado)"
-              : " (top 10 por capital)"}
-          </h2>
-          <div className="flex items-end gap-3">
+
+      {/* Shortlist — full width */}
+      <section
+        className="r-rise mt-16 space-y-6 border-t r-rule pt-10"
+        style={{ animationDelay: "320ms" }}
+      >
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-1">
+            <p className="r-eyebrow">Shortlist de fornecedores</p>
+            <h2 className="r-serif text-2xl italic text-[var(--r-ink)]">
+              {filtered ? "Resultado filtrado" : "Top por capital social"}
+            </h2>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
             <ShortlistFilters value={filters} onChange={setFilters} />
             <button
               type="button"
@@ -70,19 +150,23 @@ export default function ClusterDetailPage({
                   setExporting(false);
                 }
               }}
-              disabled={exporting || cluster.data.shortlist_gerada === false}
-              className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-              title="Baixa a shortlist deste cluster em XLSX"
+              disabled={exporting || c.shortlist_gerada === false}
+              className="rounded-sm border border-[var(--r-rule)] bg-transparent px-3.5 py-1.5 text-xs font-medium text-[var(--r-ink)] transition-colors hover:bg-[var(--r-accent-soft)] disabled:opacity-40"
             >
               {exporting ? "Exportando…" : "Exportar XLSX"}
             </button>
           </div>
         </div>
-        {cluster.data.shortlist_gerada === false && (
-          <p className="text-xs text-amber-700">Regenerando shortlist…</p>
+
+        {c.shortlist_gerada === false && (
+          <p className="r-mono text-xs uppercase tracking-wider text-[var(--r-warning)]">
+            ● Regenerando shortlist…
+          </p>
         )}
         {shortlist.isLoading && (
-          <p className="text-xs text-zinc-500">Carregando fornecedores…</p>
+          <p className="text-sm text-[var(--r-ink-2)]">
+            Carregando fornecedores…
+          </p>
         )}
         {shortlist.data ? (
           <ShortlistTable clusterId={id} entries={shortlist.data} />
